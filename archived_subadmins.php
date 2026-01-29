@@ -55,7 +55,11 @@ if (isset($_GET['restore'])) {
 
 // Fetch archived sub-admins from employees
 if ($hasEmpTable) {
-    $strandSelect = $hasDepartment ? "e.department AS strand" : "NULL AS strand";
+    // Prefer department name via departments table when employees.department_id exists
+    $hasDepartmentId = in_array('department_id', $cols, true);
+    $strandSelect = $hasDepartmentId
+        ? "COALESCE(d.name, e.department) AS strand"
+        : ($hasDepartment ? "e.department AS strand" : "NULL AS strand");
     $picSelect = $hasProfilePic ? "e.profile_pic" : "NULL AS profile_pic";
     $whereArchived = $hasIsArchived ? "COALESCE(e.is_archived,0) = 1" : "1=0"; // if no column, show empty
     // Build safe fullname based on existing columns
@@ -80,6 +84,7 @@ if ($hasEmpTable) {
         {$createdAtSelect}
       FROM employees e
       INNER JOIN roles r ON e.employee_id = r.employee_id
+      " . ($hasDepartmentId ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
       WHERE r.role_id = 2 AND {$whereArchived}
       ORDER BY {$orderBy}";
     $stmt = $conn->prepare($sql);

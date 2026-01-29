@@ -54,6 +54,7 @@ try {
     $firstColName = in_array('first_name', $empCols, true) ? 'first_name' : (in_array('firstname', $empCols, true) ? 'firstname' : null);
     $lastColName  = in_array('last_name',  $empCols, true) ? 'last_name'  : (in_array('lastname',  $empCols, true)  ? 'lastname'  : null);
     $hasDeptCol   = in_array('department', $empCols, true);
+    $hasDeptIdCol = in_array('department_id', $empCols, true);
     $hasPermCol   = in_array('permissions', $empCols, true);
     $hasPicCol    = in_array('profile_pic', $empCols, true);
 
@@ -136,6 +137,16 @@ try {
         $permissions = isset($_POST['permissions']) ? $_POST['permissions'] : null;
         // Determine department: if provided in POST, use it; otherwise keep existing
         $strand = isset($_POST['strand']) ? trim($_POST['strand']) : ($user['department'] ?? null);
+        // Resolve department_id from departments when available
+        $deptIdVal = null;
+        if ($strand !== null && $strand !== '') {
+            try {
+                $q = $conn->prepare("SELECT department_id FROM departments WHERE LOWER(TRIM(code)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+                $q->execute([$strand, $strand]);
+                $did = $q->fetchColumn();
+                if ($did !== false && $did !== null) { $deptIdVal = (int)$did; }
+            } catch (Throwable $_) { $deptIdVal = null; }
+        }
         // Role change: only Dean or Research Adviser
         $role_name_raw = isset($_POST['role_name']) ? $_POST['role_name'] : ($user['role'] ?? ($user['employee_type'] ?? 'RESEARCH_ADVISER'));
         $role_key = strtoupper(str_replace(' ', '_', trim((string)$role_name_raw)));
@@ -211,9 +222,8 @@ try {
         if ($changePassword) {
             $sets[] = "password = ?"; $params[] = $new_hashed;
         }
-        if ($strand !== null && $hasDeptCol) {
-            $sets[] = "department = ?"; $params[] = $strand;
-        }
+        if ($strand !== null && $hasDeptCol) { $sets[] = "department = ?"; $params[] = $strand; }
+        if ($hasDeptIdCol && $deptIdVal !== null) { $sets[] = "department_id = ?"; $params[] = $deptIdVal; }
         // Update textual role columns
         // Detect columns again: prefer employee_type for enum systems else role
         try {

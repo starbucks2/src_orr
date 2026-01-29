@@ -43,13 +43,16 @@ if (isset($_GET['archive'])) {
 }
 
 // Fetch active (non-archived) sub-admins (Research Advisers)
-// Detect if the runtime DB has the `department` and `profile_pic` columns in `employees`
+// Detect if the runtime DB has the `department_id`, `department`, and `profile_pic` columns in `employees`
 try {
-    $colChk = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'department'");
+    $colChk = $conn->prepare("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'");
     $colChk->execute();
-    $hasDepartmentCol = ((int)$colChk->fetchColumn() > 0);
+    $empCols = $colChk->fetchAll(PDO::FETCH_COLUMN, 0);
+    $hasDepartmentCol = in_array('department', $empCols, true);
+    $hasDepartmentIdCol = in_array('department_id', $empCols, true);
 } catch (Throwable $_) {
     $hasDepartmentCol = false; // be safe
+    $hasDepartmentIdCol = false;
 }
 
 try {
@@ -90,7 +93,9 @@ try {
 } catch (Throwable $_) { $hasEmpTypeCol = false; }
 $roleCol = $hasRoleCol ? 'role' : 'employee_type';
 
-$strandSelect = $hasDepartmentCol ? "e.department AS strand" : "NULL AS strand";
+$strandSelect = $hasDepartmentIdCol
+    ? "COALESCE(d.name, e.department) AS strand"
+    : ($hasDepartmentCol ? "e.department AS strand" : "NULL AS strand");
 $profilePicSelect = $hasProfilePicCol ? "e.profile_pic" : "NULL AS profile_pic";
 
 // Build a safe fullname expression using only existing columns
@@ -125,6 +130,7 @@ $sql = "SELECT
     {$profilePicSelect}
   FROM employees e
   INNER JOIN roles r ON e.employee_id = r.employee_id
+  " . ($hasDepartmentIdCol ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
   WHERE r.role_id = 2 AND " . ($hasIsArchivedCol ? "COALESCE(e.is_archived,0) = 0" : "1=1") . "
   ORDER BY {$orderBy}";
 $stmt = $conn->prepare($sql);

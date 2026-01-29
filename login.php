@@ -289,6 +289,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
 
         if ($user) {
+            // Resolve department label for employees via departments table when available
+            try {
+                if (($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'sub_admins') {
+                    $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
+                                              FROM employees e
+                                              LEFT JOIN departments d ON d.department_id = e.department_id
+                                              WHERE e.employee_id = ? LIMIT 1");
+                    $empIdForDept = $user['id'] ?? null;
+                    if ($empIdForDept !== null) {
+                        $qDept->execute([$empIdForDept]);
+                        $dlabel = $qDept->fetchColumn();
+                        if ($dlabel !== false && $dlabel !== null && $dlabel !== '') {
+                            $user['department'] = $dlabel;
+                        }
+                    }
+                }
+            } catch (Throwable $_) { /* ignore */ }
             // Reset login attempts on successful login
             $_SESSION['login_attempts'] = 0;
             $_SESSION['last_attempt_time'] = 0;

@@ -16,8 +16,14 @@ if (
     // Fallback: if a sub-admin is logged in but user_type/department not set, derive from employees
     if (!empty($_SESSION['subadmin_id']) && $conn) {
         try {
-            // Get department from employees table using roles table (role_id = 2 for RESEARCH_ADVISER)
-            $qDept = $conn->prepare("SELECT e.department FROM employees e INNER JOIN roles r ON e.employee_id = r.employee_id WHERE e.employee_id = ? AND r.role_id = 2 LIMIT 1");
+            // Get department via employees.department_id when available; fallback to legacy employees.department
+            // role_id = 2 for RESEARCH_ADVISER
+            $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
+                                     FROM employees e
+                                     INNER JOIN roles r ON e.employee_id = r.employee_id
+                                     LEFT JOIN departments d ON d.department_id = e.department_id
+                                     WHERE e.employee_id = ? AND r.role_id = 2
+                                     LIMIT 1");
             $qDept->execute([$_SESSION['subadmin_id']]);
             $dept = (string)($qDept->fetchColumn() ?: '');
             if ($dept !== '') {
@@ -233,7 +239,7 @@ if ($conn) {
         // 3. Status must be 1 (already filtered in the base_union)
 
         $filters_params = [];
-        $filters_sql = " WHERE (rs.year LIKE ? OR (rs.student_id = ? AND rs.student_id IS NOT NULL) OR rs.student_id IS NULL)";
+        $filters_sql = " WHERE (rs.year LIKE ? OR (rs.student_id = ? AND rs.student_id IS NOT NULL))";
         $filters_params[] = $__ay_like;
         $filters_params[] = $current_student_id ?? '___NONE___';
 
@@ -412,6 +418,10 @@ if ($conn) {
                 $fallback_where = " WHERE b.status = 1";
                 $fallback_params = [];
                 
+                // Apply academic year filter in fallback too
+                $fallback_where .= " AND b.year LIKE ?";
+                $fallback_params[] = $__ay_like;
+                
                 // Apply department filter in fallback too
                 if ($curr_dept) {
                     $fallback_where .= " AND (TRIM(LOWER(b.department)) = TRIM(LOWER(?)) OR b.department LIKE ?)";
@@ -451,6 +461,10 @@ if ($conn) {
         try {
             $fallback_where = " WHERE b.status = 1";
             $fallback_params = [];
+            
+            // Apply academic year filter in PDOException fallback too
+            $fallback_where .= " AND b.year LIKE ?";
+            $fallback_params[] = $__ay_like;
             
             // Apply department filter in PDOException fallback too
             if ($curr_dept) {

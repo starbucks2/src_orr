@@ -156,11 +156,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             try {
                 // Detect optional columns for department, permissions, and profile_pic
                 $hasDeptCol = $hasPermCol = $hasPicCol = false;
+                $hasDeptIdCol = false;
                 try {
                     $qDept = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'department'");
                     $qDept->execute();
                     $hasDeptCol = ((int)$qDept->fetchColumn() > 0);
                 } catch (Throwable $_) { $hasDeptCol = false; }
+                try {
+                    $qDeptId = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'department_id'");
+                    $qDeptId->execute();
+                    $hasDeptIdCol = ((int)$qDeptId->fetchColumn() > 0);
+                } catch (Throwable $_) { $hasDeptIdCol = false; }
                 try {
                     $qPerm = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'permissions'");
                     $qPerm->execute();
@@ -171,6 +177,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $qPic->execute();
                     $hasPicCol = ((int)$qPic->fetchColumn() > 0);
                 } catch (Throwable $_) { $hasPicCol = false; }
+
+                // Resolve department_id from input department label (matches by code or name)
+                $deptIdVal = null;
+                try {
+                    $q = $conn->prepare("SELECT department_id FROM departments WHERE LOWER(TRIM(code)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+                    $q->execute([$department, $department]);
+                    $did = $q->fetchColumn();
+                    if ($did !== false && $did !== null) { $deptIdVal = (int)$did; }
+                } catch (Throwable $_) { $deptIdVal = null; }
 
                 // Build columns/values
                 $cols = ['employee_id'];
@@ -190,6 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $cols[] = 'role_id'; $vals[] = $rid;
                     }
                 } catch (Throwable $_) { /* ignore */ }
+                if ($hasDeptIdCol && $deptIdVal !== null) { $cols[] = 'department_id'; $vals[] = $deptIdVal; }
                 if ($hasDeptCol) { $cols[] = 'department'; $vals[] = $department; }
                 if ($hasPermCol) { $cols[] = 'permissions'; $vals[] = $permissions_json; }
                 if ($hasPicCol && $profilePicName) { $cols[] = 'profile_pic'; $vals[] = $profilePicName; }

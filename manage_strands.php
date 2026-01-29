@@ -36,9 +36,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $conn->prepare("SELECT employee_id FROM employees WHERE employee_id = ? AND employee_type = 'RESEARCH_ADVISER'");
                 $stmt->execute([$subadminId]);
                 if ($stmt->fetch()) {
-                    // Store chosen strand name in employees.department for SHS context or a dedicated JSON in permissions if needed.
-                    $upd = $conn->prepare('UPDATE employees SET department = ? WHERE employee_id = ?');
-                    $upd->execute([$strand, $subadminId]);
+                    // Resolve department_id from code or name
+                    $deptIdVal = null;
+                    try {
+                        $q = $conn->prepare("SELECT department_id FROM departments WHERE LOWER(TRIM(code)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+                        $q->execute([$strand, $strand]);
+                        $did = $q->fetchColumn();
+                        if ($did !== false && $did !== null) { $deptIdVal = (int)$did; }
+                    } catch (Throwable $_) { $deptIdVal = null; }
+
+                    // Update employees: set textual department and, when available, department_id
+                    $hasDeptIdCol = false;
+                    try {
+                        $chk = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'department_id'");
+                        $chk->execute();
+                        $hasDeptIdCol = ((int)$chk->fetchColumn() > 0);
+                    } catch (Throwable $_) { $hasDeptIdCol = false; }
+
+                    if ($hasDeptIdCol && $deptIdVal !== null) {
+                        $upd = $conn->prepare('UPDATE employees SET department = ?, department_id = ? WHERE employee_id = ?');
+                        $upd->execute([$strand, $deptIdVal, $subadminId]);
+                    } else {
+                        $upd = $conn->prepare('UPDATE employees SET department = ? WHERE employee_id = ?');
+                        $upd->execute([$strand, $subadminId]);
+                    }
                     $_SESSION['success'] = 'Research adviser strand updated successfully.';
                 } else {
                     $_SESSION['error'] = 'Research adviser not found.';
