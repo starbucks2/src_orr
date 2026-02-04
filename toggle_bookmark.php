@@ -25,19 +25,19 @@ if ($book_id <= 0) {
 
 try {
     // Check current state
-    $stmt = $conn->prepare('SELECT id FROM bookmarks WHERE student_id = ? AND book_id = ?');
+    $stmt = $conn->prepare('SELECT id FROM cap_bookmarks WHERE student_id = ? AND book_id = ?');
     $stmt->execute([$student_id, $book_id]);
     $existingId = $stmt->fetchColumn();
 
     if ($existingId) {
         // Remove bookmark
-        $del = $conn->prepare('DELETE FROM bookmarks WHERE id = ?');
+        $del = $conn->prepare('DELETE FROM cap_bookmarks WHERE id = ?');
         $del->execute([$existingId]);
         echo json_encode(['success' => true, 'bookmarked' => false]);
         exit;
     } else {
         // Add bookmark
-        $ins = $conn->prepare('INSERT INTO bookmarks (student_id, book_id) VALUES (?, ?)');
+        $ins = $conn->prepare('INSERT INTO cap_bookmarks (student_id, book_id) VALUES (?, ?)');
         $ins->execute([$student_id, $book_id]);
         echo json_encode(['success' => true, 'bookmarked' => true]);
         exit;
@@ -45,4 +45,3 @@ try {
 } catch (PDOException $e) {
     echo json_encode(['success' => false, 'message' => 'Database error']);
 }
-

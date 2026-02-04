@@ -21,7 +21,11 @@ try {
     $hasIsArchived = in_array('is_archived', $cols, true);
     $hasRoleCol = in_array('role', $cols, true);
 } catch (Throwable $e) {
-    $hasEmpTable = false; $hasDepartment = false; $hasProfilePic = false; $hasIsArchived = false; $hasRoleCol = false;
+    $hasEmpTable = false;
+    $hasDepartment = false;
+    $hasProfilePic = false;
+    $hasIsArchived = false;
+    $hasRoleCol = false;
 }
 // Determine role column name
 $roleCol = $hasRoleCol ? 'role' : 'employee_type';
@@ -36,8 +40,21 @@ if (isset($_GET['restore'])) {
             $_SESSION['error'] = "Archiving feature is not available on this database (employees table missing).";
         } else {
             try {
-                // Restore using roles table (role_id 2=RESEARCH_ADVISER only)
-                $stmt = $conn->prepare("UPDATE employees SET is_archived = 0 WHERE employee_id = ? AND EXISTS (SELECT 1 FROM roles r WHERE r.employee_id = employees.employee_id AND r.role_id = 2)");
+                // Restore using role (role_id 2=RESEARCH_ADVISER only)
+                // Detect if role_id exists
+                $hasRID = false;
+                try {
+                    $c = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role_id'");
+                    $c->execute();
+                    $hasRID = ((int)$c->fetchColumn() > 0);
+                } catch (Throwable $_) {
+                }
+
+                if ($hasRID) {
+                    $stmt = $conn->prepare("UPDATE employees SET is_archived = 0 WHERE employee_id = ? AND role_id = 2");
+                } else {
+                    $stmt = $conn->prepare("UPDATE employees SET is_archived = 0 WHERE employee_id = ? AND EXISTS (SELECT 1 FROM roles r WHERE r.employee_id = employees.employee_id AND r.role_id = 2)");
+                }
                 $stmt->execute([$empId]);
                 if ($stmt->rowCount() > 0) {
                     $_SESSION['success'] = "Sub-admin restored successfully.";
@@ -67,26 +84,49 @@ if ($hasEmpTable) {
     $middleCol = in_array('middle_name', $cols, true) ? 'middle_name' : (in_array('middlename', $cols, true) ? 'middlename' : null);
     $lastCol = in_array('last_name', $cols, true) ? 'last_name' : (in_array('lastname', $cols, true) ? 'lastname' : null);
     $nameParts = [];
-    if ($firstCol) { $nameParts[] = "e.`$firstCol`"; }
-    if ($middleCol) { $nameParts[] = "NULLIF(e.`$middleCol`,'')"; }
-    if ($lastCol) { $nameParts[] = "e.`$lastCol`"; }
+    if ($firstCol) {
+        $nameParts[] = "e.`$firstCol`";
+    }
+    if ($middleCol) {
+        $nameParts[] = "NULLIF(e.`$middleCol`,'')";
+    }
+    if ($lastCol) {
+        $nameParts[] = "e.`$lastCol`";
+    }
     $nameExpr = !empty($nameParts) ? ("CONCAT_WS(' ', " . implode(', ', $nameParts) . ")") : "e.email";
     $hasCreatedAt = in_array('created_at', $cols, true);
     $createdAtSelect = $hasCreatedAt ? 'e.created_at' : "NULL AS created_at";
     $orderBy = $hasCreatedAt ? 'e.created_at DESC' : 'e.employee_id DESC';
-    // Use roles table to filter for sub-admins only (role_id 2=RESEARCH_ADVISER, not Deans)
-    $sql = "SELECT 
-        e.employee_id AS id,
-        {$nameExpr} AS fullname,
-        e.email,
-        {$strandSelect},
-        {$picSelect},
-        {$createdAtSelect}
-      FROM employees e
-      INNER JOIN roles r ON e.employee_id = r.employee_id
-      " . ($hasDepartmentId ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
-      WHERE r.role_id = 2 AND {$whereArchived}
-      ORDER BY {$orderBy}";
+    // Detect if we have role_id in employees
+    $hasRoleIDInEmp = in_array('role_id', $cols, true);
+
+    // Use role_id directly if available to filter for sub-admins only (role_id 2=RESEARCH_ADVISER)
+    if ($hasRoleIDInEmp) {
+        $sql = "SELECT 
+            e.employee_id AS id,
+            {$nameExpr} AS fullname,
+            e.email,
+            {$strandSelect},
+            {$picSelect},
+            {$createdAtSelect}
+          FROM employees e
+          " . ($hasDepartmentId ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
+          WHERE e.role_id = 2 AND {$whereArchived}
+          ORDER BY {$orderBy}";
+    } else {
+        $sql = "SELECT 
+            e.employee_id AS id,
+            {$nameExpr} AS fullname,
+            e.email,
+            {$strandSelect},
+            {$picSelect},
+            {$createdAtSelect}
+          FROM employees e
+          INNER JOIN roles r ON e.employee_id = r.employee_id
+          " . ($hasDepartmentId ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
+          WHERE r.role_id = 2 AND {$whereArchived}
+          ORDER BY {$orderBy}";
+    }
     $stmt = $conn->prepare($sql);
     $stmt->execute();
     $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -96,6 +136,7 @@ if ($hasEmpTable) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -104,6 +145,7 @@ if ($hasEmpTable) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
+
 <body class="bg-gray-100 flex">
     <?php include 'admin_sidebar.php'; ?>
 
@@ -119,7 +161,14 @@ if ($hasEmpTable) {
             <?php if (isset($_SESSION['success'])): ?>
                 <script>
                     document.addEventListener('DOMContentLoaded', () => {
-                        Swal.fire({ icon: 'success', title: <?= json_encode($_SESSION['success']) ?>, timer: 1800, showConfirmButton: false, toast: true, position: 'top-end' });
+                        Swal.fire({
+                            icon: 'success',
+                            title: <?= json_encode($_SESSION['success']) ?>,
+                            timer: 1800,
+                            showConfirmButton: false,
+                            toast: true,
+                            position: 'top-end'
+                        });
                     });
                 </script>
                 <?php unset($_SESSION['success']); ?>
@@ -127,7 +176,11 @@ if ($hasEmpTable) {
             <?php if (isset($_SESSION['error'])): ?>
                 <script>
                     document.addEventListener('DOMContentLoaded', () => {
-                        Swal.fire({ icon: 'error', title: 'Action failed', text: <?= json_encode($_SESSION['error']) ?> });
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Action failed',
+                            text: <?= json_encode($_SESSION['error']) ?>
+                        });
                     });
                 </script>
                 <?php unset($_SESSION['error']); ?>
@@ -147,27 +200,30 @@ if ($hasEmpTable) {
                     </thead>
                     <tbody class="divide-y divide-gray-200">
                         <?php if (empty($subadmins)): ?>
-                            <tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No archived sub-admins</td></tr>
-                        <?php else: foreach ($subadmins as $sa): ?>
                             <tr>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gray-100 border flex items-center justify-center">
-                                        <?php if (!empty($sa['profile_pic'])): ?>
-                                            <img src="images/<?= htmlspecialchars($sa['profile_pic']) ?>" alt="Profile" class="w-full h-full object-cover">
-                                        <?php else: ?>
-                                            <i class="fas fa-user text-gray-400"></i>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap"><?= htmlspecialchars($sa['fullname']) ?></td>
-                                <td class="px-6 py-4 whitespace-nowrap"><?= htmlspecialchars($sa['email']) ?></td>
-                                <td class="px-6 py-4 whitespace-nowrap"><?= htmlspecialchars($sa['strand'] ?? '') ?></td>
-                                <td class="px-6 py-4 whitespace-nowrap">Yes</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <a href="archived_subadmins.php?restore=<?= htmlspecialchars($sa['id']) ?>" class="text-green-600 hover:text-green-800 restore-link"><i class="fas fa-undo"></i> Restore</a>
-                                </td>
+                                <td colspan="6" class="px-6 py-4 text-center text-gray-500">No archived sub-admins</td>
                             </tr>
-                        <?php endforeach; endif; ?>
+                            <?php else: foreach ($subadmins as $sa): ?>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <div class="w-10 h-10 rounded-full overflow-hidden bg-gray-100 border flex items-center justify-center">
+                                            <?php if (!empty($sa['profile_pic'])): ?>
+                                                <img src="images/<?= htmlspecialchars($sa['profile_pic']) ?>" alt="Profile" class="w-full h-full object-cover">
+                                            <?php else: ?>
+                                                <i class="fas fa-user text-gray-400"></i>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><?= htmlspecialchars($sa['fullname']) ?></td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><?= htmlspecialchars($sa['email']) ?></td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><?= htmlspecialchars($sa['strand'] ?? '') ?></td>
+                                    <td class="px-6 py-4 whitespace-nowrap">Yes</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <a href="archived_subadmins.php?restore=<?= htmlspecialchars($sa['id']) ?>" class="text-green-600 hover:text-green-800 restore-link"><i class="fas fa-undo"></i> Restore</a>
+                                    </td>
+                                </tr>
+                        <?php endforeach;
+                        endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -175,23 +231,28 @@ if ($hasEmpTable) {
     </main>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function(){
-        document.querySelectorAll('.restore-link').forEach(function(el){
-            el.addEventListener('click', function(e){
-                const href = this.getAttribute('href');
-                if (typeof Swal === 'undefined') return;
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Restore this sub-admin?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonColor: '#16a34a',
-                    cancelButtonColor: '#6b7280',
-                    confirmButtonText: 'Yes, restore'
-                }).then((res)=>{ if(res.isConfirmed){ window.location.href = href; }});
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.restore-link').forEach(function(el) {
+                el.addEventListener('click', function(e) {
+                    const href = this.getAttribute('href');
+                    if (typeof Swal === 'undefined') return;
+                    e.preventDefault();
+                    Swal.fire({
+                        title: 'Restore this sub-admin?',
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: '#16a34a',
+                        cancelButtonColor: '#6b7280',
+                        confirmButtonText: 'Yes, restore'
+                    }).then((res) => {
+                        if (res.isConfirmed) {
+                            window.location.href = href;
+                        }
+                    });
+                });
             });
         });
-    });
     </script>
 </body>
+
 </html>

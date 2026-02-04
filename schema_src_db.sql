@@ -61,12 +61,41 @@ CREATE TABLE IF NOT EXISTS `students` (
 
 -- Table: strands (used by setup_strands)
 CREATE TABLE IF NOT EXISTS `strands` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `strand` VARCHAR(50) NOT NULL UNIQUE
+  `strand_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `strand` VARCHAR(50) NOT NULL UNIQUE,
+  `id` INT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: books (uploaded research documents)
-CREATE TABLE IF NOT EXISTS `books` (
+-- Table: departments
+CREATE TABLE IF NOT EXISTS `departments` (
+  `department_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `department_name` VARCHAR(100) NOT NULL UNIQUE,
+  `code` VARCHAR(20) NULL UNIQUE,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: courses
+CREATE TABLE IF NOT EXISTS `courses` (
+  `course_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `department_id` INT NULL,
+  `strand_id` INT NULL,
+  `course_name` VARCHAR(150) NOT NULL,
+  `course_code` VARCHAR(50) NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id` INT NULL,
+  UNIQUE KEY `uniq_course_per_dept` (`department_id`, `course_name`),
+  UNIQUE KEY `uniq_course_per_strand` (`strand_id`, `course_name`),
+  CONSTRAINT `fk_courses_department` FOREIGN KEY (`department_id`) REFERENCES `departments`(`department_id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_courses_strand` FOREIGN KEY (`strand_id`) REFERENCES `strands`(`strand_id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: cap_books (uploaded research documents)
+CREATE TABLE IF NOT EXISTS `cap_books` (
   `book_id` INT AUTO_INCREMENT PRIMARY KEY,
   `title` VARCHAR(255) NOT NULL,
   `abstract` TEXT NULL,
@@ -91,8 +120,8 @@ CREATE TABLE IF NOT EXISTS `books` (
   CONSTRAINT `fk_books_adviser` FOREIGN KEY (`adviser_id`) REFERENCES `employees`(`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: bookmarks
-CREATE TABLE IF NOT EXISTS `bookmarks` (
+-- Table: cap_bookmarks
+CREATE TABLE IF NOT EXISTS `cap_bookmarks` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `student_id` VARCHAR(32) NOT NULL,
   `book_id` INT NOT NULL,
@@ -100,7 +129,7 @@ CREATE TABLE IF NOT EXISTS `bookmarks` (
   UNIQUE KEY `uniq_bookmark` (`student_id`, `book_id`),
   INDEX `idx_bm_student` (`student_id`),
   INDEX `idx_bm_book` (`book_id`),
-  CONSTRAINT `fk_bookmarks_book` FOREIGN KEY (`book_id`) REFERENCES `books`(`book_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_bookmarks_book` FOREIGN KEY (`book_id`) REFERENCES `cap_books`(`book_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_bookmarks_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`student_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -115,8 +144,8 @@ CREATE TABLE IF NOT EXISTS `activity_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Backward-compatibility helpers (views and alias columns) during migration
--- 1) Provide paper_id alias for legacy bookmarks usage
-ALTER TABLE `bookmarks`
+-- 1) Provide paper_id alias for legacy cap_bookmarks usage
+ALTER TABLE `cap_bookmarks`
   ADD COLUMN `paper_id` INT AS (`book_id`) VIRTUAL;
 
 -- 2) Legacy admin table mapped to employees of type ADMIN
@@ -148,7 +177,7 @@ SELECT
 FROM `employees` e
 WHERE e.`employee_type` = 'RESEARCH_ADVISER';
 
--- 4) Legacy research_submission mapped to books
+-- 4) Legacy research_submission mapped to cap_books
 DROP VIEW IF EXISTS `research_submission`;
 CREATE VIEW `research_submission` AS
 SELECT
@@ -168,4 +197,4 @@ SELECT
   b.`adviser_id` AS `adviser_id`,
   b.`status` AS `status`,
   b.`year` AS `year`
-FROM `books` b;
+FROM `cap_books` b;

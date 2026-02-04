@@ -16,17 +16,17 @@ if (!$book_id || $book_id <= 0) {
     exit();
 }
 
-// Try direct from books (preferred)
+// Try direct from cap_books (preferred)
 $research = null;
 try {
-    $stmt = $conn->prepare("UPDATE books SET views = views + 1 WHERE book_id = ?");
+    $stmt = $conn->prepare("UPDATE cap_books SET views = views + 1 WHERE book_id = ?");
     $stmt->execute([$book_id]);
 
-    $stmt = $conn->prepare("SELECT title, authors AS author, year, department, document FROM books WHERE book_id = ?");
+    $stmt = $conn->prepare("SELECT title, authors AS author, year, department, document FROM cap_books WHERE book_id = ?");
     $stmt->execute([$book_id]);
     $research = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
-    // Fallback to legacy view if direct books access fails
+    // Fallback to legacy view if direct cap_books access fails
     $stmt = $conn->prepare("UPDATE research_submission SET views = views + 1 WHERE id = ?");
     $stmt->execute([$book_id]);
 
@@ -56,6 +56,7 @@ if ($research && !empty($research['document'])) {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -63,6 +64,7 @@ if ($research && !empty($research['document'])) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-slate-50 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 py-6">
         <div class="mb-4 flex items-center justify-between">
@@ -115,4 +117,5 @@ if ($research && !empty($research['document'])) {
         </div>
     </div>
 </body>
+
 </html>

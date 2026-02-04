@@ -46,8 +46,8 @@ try {
         FROM research_submission
         WHERE student_id = ?
         UNION ALL
-        SELECT book_id AS id, title, year, department, course_strand, status, document, submission_date, 'admin' as uploader_type, 'books' AS source, student_id
-        FROM books
+        SELECT book_id AS id, title, year, department, course_strand, status, document, submission_date, 'admin' as uploader_type, 'cap_books' AS source, student_id
+        FROM cap_books
         WHERE (student_id = ? OR (student_id IS NULL AND status = 1 AND (department = ? OR course_strand = ?)))
     ) AS allsub
     ORDER BY submission_date DESC";
@@ -602,79 +602,79 @@ try {
                         <tbody>
                             <?php if (count($submissions) > 0): ?>
                                 <?php foreach ($submissions as $submission): ?>
-                                            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
-                                                <td class="px-4 py-3 text-sm font-medium text-gray-800"><?php echo htmlspecialchars($submission['title']); ?></td>
-                                                <td class="px-4 py-3 text-sm text-gray-600"><?php echo htmlspecialchars($submission['year']); ?></td>
-                                                <td class="px-4 py-3 text-sm">
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                        <?php echo htmlspecialchars($submission['department'] ?? $department); ?>
-                                                    </span>
-                                                </td>
-                                                <td class="px-4 py-3 text-sm">
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                        <?php echo htmlspecialchars($submission['course_strand'] ?? $course_strand); ?>
-                                                    </span>
-                                                </td>
-                                                <td class="px-4 py-3 text-sm">
-                                                    <div class="flex items-center space-x-3">
-                                                        <?php
-                                                        // Build a robust href for the stored document value
-                                                        $docHref = '';
-                                                        if (!empty($submission['document'])) {
-                                                            $raw = trim((string)$submission['document']);
-                                                            if (preg_match('~^https?://~i', $raw)) {
-                                                                $docHref = $raw;
-                                                            } else {
-                                                                $clean = preg_replace('#[\\/]+#', '/', $raw);
-                                                                $clean = ltrim($clean, "./\\/");
-                                                                $lower = strtolower($clean);
-                                                                $needle1 = 'uploads/research_documents/';
-                                                                $needle2 = 'research_documents/';
-                                                                $needle3 = 'uploads/';
-                                                                if (($p = strpos($lower, $needle1)) !== false) {
-                                                                    $rel = substr($clean, $p);
-                                                                    $docPath = $rel;
-                                                                } elseif (($p = strpos($lower, $needle2)) !== false) {
-                                                                    $rel = substr($clean, $p);
-                                                                    $docPath = 'uploads/' . $rel;
-                                                                } elseif (strpos($lower, $needle3) === 0) {
-                                                                    $docPath = $clean;
-                                                                } else {
-                                                                    $filename = basename($clean);
-                                                                    $docPath = 'uploads/research_documents/' . $filename;
-                                                                }
-                                                                // Build absolute URL
-                                                                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                                                                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                                                                $base = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
-                                                                $docHref = $scheme . '://' . $host . $base . '/' . $docPath;
-                                                            }
+                                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
+                                        <td class="px-4 py-3 text-sm font-medium text-gray-800"><?php echo htmlspecialchars($submission['title']); ?></td>
+                                        <td class="px-4 py-3 text-sm text-gray-600"><?php echo htmlspecialchars($submission['year']); ?></td>
+                                        <td class="px-4 py-3 text-sm">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                <?php echo htmlspecialchars($submission['department'] ?? $department); ?>
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                <?php echo htmlspecialchars($submission['course_strand'] ?? $course_strand); ?>
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm">
+                                            <div class="flex items-center space-x-3">
+                                                <?php
+                                                // Build a robust href for the stored document value
+                                                $docHref = '';
+                                                if (!empty($submission['document'])) {
+                                                    $raw = trim((string)$submission['document']);
+                                                    if (preg_match('~^https?://~i', $raw)) {
+                                                        $docHref = $raw;
+                                                    } else {
+                                                        $clean = preg_replace('#[\\/]+#', '/', $raw);
+                                                        $clean = ltrim($clean, "./\\/");
+                                                        $lower = strtolower($clean);
+                                                        $needle1 = 'uploads/research_documents/';
+                                                        $needle2 = 'research_documents/';
+                                                        $needle3 = 'uploads/';
+                                                        if (($p = strpos($lower, $needle1)) !== false) {
+                                                            $rel = substr($clean, $p);
+                                                            $docPath = $rel;
+                                                        } elseif (($p = strpos($lower, $needle2)) !== false) {
+                                                            $rel = substr($clean, $p);
+                                                            $docPath = 'uploads/' . $rel;
+                                                        } elseif (strpos($lower, $needle3) === 0) {
+                                                            $docPath = $clean;
+                                                        } else {
+                                                            $filename = basename($clean);
+                                                            $docPath = 'uploads/research_documents/' . $filename;
                                                         }
-                                                        ?>
-                                                        <?php if (!empty($docHref)): ?>
-                                                            <a href="<?php echo htmlspecialchars($docHref); ?>" class="text-blue-600 hover:text-blue-800 transition-colors duration-200 flex items-center action-btn" target="_blank">
-                                                                <i class="fas fa-file-pdf mr-1"></i>
-                                                                View
-                                                            </a>
-                                                        <?php else: ?>
-                                                            <span class="text-gray-500">No document</span>
-                                                        <?php endif; ?>
+                                                        // Build absolute URL
+                                                        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                                                        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                                        $base = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+                                                        $docHref = $scheme . '://' . $host . $base . '/' . $docPath;
+                                                    }
+                                                }
+                                                ?>
+                                                <?php if (!empty($docHref)): ?>
+                                                    <a href="<?php echo htmlspecialchars($docHref); ?>" class="text-blue-600 hover:text-blue-800 transition-colors duration-200 flex items-center action-btn" target="_blank">
+                                                        <i class="fas fa-file-pdf mr-1"></i>
+                                                        View
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="text-gray-500">No document</span>
+                                                <?php endif; ?>
 
-                                                        <?php if (($submission['source'] ?? '') === 'research_submission'): ?>
-                                                            <a href="edit_research.php?id=<?php echo $submission['id']; ?>" class="text-yellow-600 hover:text-yellow-800 transition-colors duration-200 flex items-center action-btn">
-                                                                <i class="fas fa-edit mr-1"></i>
-                                                                Edit
-                                                            </a>
-                                                            <a href="delete_research.php?id=<?php echo $submission['id']; ?>" class="text-red-600 hover:text-red-800 transition-colors duration-200 flex items-center action-btn" onclick="return confirm('Are you sure you want to delete this research? This action cannot be undone.');">
-                                                                <i class="fas fa-trash-alt mr-1"></i>
-                                                                Delete
-                                                            </a>
-                                                        <?php else: ?>
-                                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Admin Upload</span>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </td>
-                                            </tr>
+                                                <?php if (($submission['source'] ?? '') === 'research_submission'): ?>
+                                                    <a href="edit_research.php?id=<?php echo $submission['id']; ?>" class="text-yellow-600 hover:text-yellow-800 transition-colors duration-200 flex items-center action-btn">
+                                                        <i class="fas fa-edit mr-1"></i>
+                                                        Edit
+                                                    </a>
+                                                    <a href="delete_research.php?id=<?php echo $submission['id']; ?>" class="text-red-600 hover:text-red-800 transition-colors duration-200 flex items-center action-btn" onclick="return confirm('Are you sure you want to delete this research? This action cannot be undone.');">
+                                                        <i class="fas fa-trash-alt mr-1"></i>
+                                                        Delete
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Admin Upload</span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>

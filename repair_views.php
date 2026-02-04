@@ -10,7 +10,8 @@ header('Content-Type: text/plain; charset=utf-8');
 
 require_once __DIR__ . '/db.php';
 
-function hasColumn(PDO $conn, string $table, string $column): bool {
+function hasColumn(PDO $conn, string $table, string $column): bool
+{
     $q = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
     $q->execute([$table, $column]);
     return (int)$q->fetchColumn() > 0;
@@ -60,11 +61,11 @@ try {
     $conn->exec($sqlSub);
     echo "Recreated view: sub_admins (using column: $roleCol)\n";
 
-    // 3) Ensure bookmarks has VIRTUAL alias paper_id (ok if fails on some MySQL versions)
+    // 3) Ensure cap_bookmarks has VIRTUAL alias paper_id (ok if fails on some MySQL versions)
     try {
-        if (!hasColumn($conn, 'bookmarks', 'paper_id')) {
-            $conn->exec("ALTER TABLE `bookmarks` ADD COLUMN `paper_id` INT AS (`book_id`) VIRTUAL");
-            echo "Added virtual column: bookmarks.paper_id\n";
+        if (!hasColumn($conn, 'cap_bookmarks', 'paper_id')) {
+            $conn->exec("ALTER TABLE `cap_bookmarks` ADD COLUMN `paper_id` INT AS (`book_id`) VIRTUAL");
+            echo "Added virtual column: cap_bookmarks.paper_id\n";
         }
     } catch (Throwable $e) {
         echo "[warn] bookmarks.paper_id: " . $e->getMessage() . "\n";

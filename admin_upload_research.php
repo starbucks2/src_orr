@@ -23,7 +23,38 @@ if (!$can_upload) {
 }
 
 // Always include DB for GET to pre-populate selects (for both admin and subadmin)
-try { include_once 'db.php'; } catch (Throwable $_) {}
+try {
+    include_once 'db.php';
+    if (isset($conn)) {
+        // Ensure departments table is migrated
+        try {
+            $colCheck = $conn->query("SHOW COLUMNS FROM departments LIKE 'name'")->fetch();
+            if ($colCheck) {
+                $conn->exec("ALTER TABLE departments CHANGE COLUMN `name` `department_name` VARCHAR(100) NOT NULL");
+                $conn->exec("UPDATE departments SET department_name = 'College of Computer Studies' WHERE department_name = 'CCS'");
+                $conn->exec("UPDATE departments SET department_name = 'College of Education' WHERE department_name = 'COE'");
+                $conn->exec("UPDATE departments SET department_name = 'College of Business Studies' WHERE department_name = 'CBS'");
+            }
+        } catch (Throwable $_) {
+        }
+
+        // Ensure academic_years table exists
+        try {
+            $conn->exec("CREATE TABLE IF NOT EXISTS academic_years (id INT AUTO_INCREMENT PRIMARY KEY, span VARCHAR(15) NOT NULL UNIQUE, is_active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $count = (int)$conn->query('SELECT COUNT(*) FROM academic_years')->fetchColumn();
+            if ($count === 0) {
+                $cur = (int)date('Y');
+                $ins = $conn->prepare('INSERT IGNORE INTO academic_years(span, is_active) VALUES(?, 1)');
+                for ($y = $cur + 1; $y >= 2000; $y--) {
+                    $span = ($y - 1) . '-' . $y;
+                    $ins->execute([$span]);
+                }
+            }
+        } catch (Throwable $_) {
+        }
+    }
+} catch (Throwable $_) {
+}
 
 // Server-side fallback data for selects
 $server_departments = [];
@@ -43,7 +74,7 @@ try {
     $effectiveDept = $preselectedDeptPHP !== '' ? $preselectedDeptPHP : (isset($_SESSION['department']) ? (string)$_SESSION['department'] : '');
     if ($effectiveDept !== '' && isset($conn)) {
         // Lookup department id and code
-        $dstmt = $conn->prepare("SELECT department_id AS id, name, code FROM departments WHERE name = ? LIMIT 1");
+        $dstmt = $conn->prepare("SELECT department_id AS id, department_name AS name, code FROM departments WHERE department_name = ? LIMIT 1");
         $dstmt->execute([$effectiveDept]);
         $drow = $dstmt->fetch(PDO::FETCH_ASSOC);
         if ($drow) {
@@ -62,35 +93,54 @@ try {
                     if ($selStrandName !== '' && $server_strands) {
                         $sid = null;
                         foreach ($server_strands as $sr) {
-                            if (strcasecmp((string)$sr['strand'], $selStrandName) === 0) { $sid = (int)$sr['id']; break; }
+                            if (strcasecmp((string)$sr['strand'], $selStrandName) === 0) {
+                                $sid = (int)$sr['id'];
+                                break;
+                            }
                         }
                         if ($sid) {
                             $c = $conn->prepare('SELECT course_name AS name FROM courses WHERE strand_id = ? AND is_active = 1 ORDER BY course_name');
                             $c->execute([$sid]);
-                            $server_strand_courses = $c ? array_map(function($r){ return (string)$r['name']; }, $c->fetchAll(PDO::FETCH_ASSOC)) : [];
+                            $server_strand_courses = $c ? array_map(function ($r) {
+                                return (string)$r['name'];
+                            }, $c->fetchAll(PDO::FETCH_ASSOC)) : [];
                         }
                     }
                     // Do not use $server_course_strand_options for SHS path
                     $server_course_strand_options = [];
-                } catch (Throwable $_) {}
+                } catch (Throwable $_) {
+                }
             } else {
                 // Load courses for department id
                 try {
                     $c = $conn->prepare('SELECT course_name AS name, course_code AS code FROM courses WHERE department_id = ? AND is_active = 1 ORDER BY course_name');
                     $c->execute([(int)$drow['id']]);
                     $server_course_strand_options = $c ? $c->fetchAll(PDO::FETCH_ASSOC) : [];
-                } catch (Throwable $_) {}
+                } catch (Throwable $_) {
+                }
             }
         }
     }
-} catch (Throwable $_) {}
+} catch (Throwable $_) {
+}
 try {
     if (isset($conn)) {
         // Departments
         try {
-            $stmtDept = $conn->query("SELECT department_id AS id, name, code FROM departments WHERE is_active = 1 ORDER BY name");
+            // New schema
+            $stmtDept = $conn->query("SELECT department_id AS id, department_name AS name, code FROM departments WHERE is_active = 1 ORDER BY department_name");
         } catch (Throwable $e1) {
-            $stmtDept = $conn->query("SELECT id AS id, name, code FROM departments WHERE is_active = 1 ORDER BY name");
+            try {
+                // New column, old PK
+                $stmtDept = $conn->query("SELECT id AS id, department_name AS name, code FROM departments WHERE is_active = 1 ORDER BY department_name");
+            } catch (Throwable $e2) {
+                try {
+                    // Old schema
+                    $stmtDept = $conn->query("SELECT department_id AS id, name AS name, code FROM departments WHERE is_active = 1 ORDER BY name");
+                } catch (Throwable $e3) {
+                    $stmtDept = $conn->query("SELECT id AS id, name AS name, code FROM departments WHERE is_active = 1 ORDER BY name");
+                }
+            }
         }
         $server_departments = $stmtDept ? $stmtDept->fetchAll(PDO::FETCH_ASSOC) : [];
 
@@ -101,34 +151,59 @@ try {
             $cur = (int)date('Y');
             $ins = $conn->prepare('INSERT IGNORE INTO academic_years(span, is_active) VALUES(?, 1)');
             for ($y = $cur + 1; $y >= 2000; $y--) {
-                $span = ($y-1) . '-' . $y;
+                $span = ($y - 1) . '-' . $y;
                 $ins->execute([$span]);
             }
         }
         $stmtYears = $conn->query("SELECT span FROM academic_years WHERE is_active = 1 ORDER BY SUBSTRING_INDEX(span,'-',1) DESC");
         $server_year_spans = $stmtYears ? $stmtYears->fetchAll(PDO::FETCH_COLUMN, 0) : [];
-        
+
         // Build courses by department map (dept name => [{name, code}, ...])
         $courses_by_department_map = [];
         try {
-            $q = "SELECT d.name AS dept_name, d.code AS dept_code, c.course_name AS name, c.course_code AS code
+            // Try new schema first
+            $q = "SELECT d.department_name AS dept_name, d.code AS dept_code, c.course_name AS name, c.course_code AS code
                   FROM departments d
                   JOIN courses c ON c.department_id = d.department_id
                   WHERE d.is_active = 1 AND c.is_active = 1
-                  ORDER BY d.name, c.course_name";
+                  ORDER BY d.department_name, c.course_name";
             $stmt = $conn->query($q);
             $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
         } catch (Throwable $_) {
             $rows = [];
             try {
+                // Try old column name 'name'
                 $q = "SELECT d.name AS dept_name, d.code AS dept_code, c.course_name AS name, c.course_code AS code
                       FROM departments d
-                      JOIN courses c ON c.department_id = d.id
+                      JOIN courses c ON c.department_id = d.department_id
                       WHERE d.is_active = 1 AND c.is_active = 1
                       ORDER BY d.name, c.course_name";
                 $stmt = $conn->query($q);
                 $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-            } catch (Throwable $__) {}
+            } catch (Throwable $__) {
+                try {
+                    // Try old PK 'id'
+                    $q = "SELECT d.department_name AS dept_name, d.code AS dept_code, c.course_name AS name, c.course_code AS code
+                          FROM departments d
+                          JOIN courses c ON c.department_id = d.id
+                          WHERE d.is_active = 1 AND c.is_active = 1
+                          ORDER BY d.department_name, c.course_name";
+                    $stmt = $conn->query($q);
+                    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                } catch (Throwable $___) {
+                    // Try both old column and old PK
+                    try {
+                        $q = "SELECT d.name AS dept_name, d.code AS dept_code, c.course_name AS name, c.course_code AS code
+                              FROM departments d
+                              JOIN courses c ON c.department_id = d.id
+                              WHERE d.is_active = 1 AND c.is_active = 1
+                              ORDER BY d.name, c.course_name";
+                        $stmt = $conn->query($q);
+                        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                    } catch (Throwable $____) {
+                    }
+                }
+            }
         }
         foreach ($rows as $r) {
             $dn = (string)$r['dept_name'];
@@ -147,7 +222,8 @@ try {
                 $s = $conn->query('SELECT id AS id, strand FROM strands ORDER BY strand');
             }
             $server_strands = $s ? $s->fetchAll(PDO::FETCH_ASSOC) : [];
-        } catch (Throwable $_) { /* ignore */ }
+        } catch (Throwable $_) { /* ignore */
+        }
         $courses_by_strand_map = [];
         try {
             $q = "SELECT s.strand AS strand, c.course_name AS name, c.course_code AS code
@@ -169,7 +245,8 @@ try {
             ];
         }
     }
-} catch (Throwable $_) { /* ignore, JS will try via fetch */ }
+} catch (Throwable $_) { /* ignore, JS will try via fetch */
+}
 
 // Handle form submission
 $message = '';
@@ -198,11 +275,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     // Validate required fields with better feedback
     $missing = [];
-    if ($title === '') { $missing[] = 'Title'; }
-    if ($year === '') { $missing[] = 'Academic/School Year'; }
-    if ($abstract === '') { $missing[] = 'Abstract'; }
-    if ($author === '') { $missing[] = 'Author(s)'; }
-    if ($department === '') { $missing[] = 'Department'; }
+    if ($title === '') {
+        $missing[] = 'Title';
+    }
+    if ($year === '') {
+        $missing[] = 'Academic/School Year';
+    }
+    if ($abstract === '') {
+        $missing[] = 'Abstract';
+    }
+    if ($author === '') {
+        $missing[] = 'Author(s)';
+    }
+    if ($department === '') {
+        $missing[] = 'Department';
+    }
     if (!empty($missing)) {
         $message = 'Please fill the following: ' . implode(', ', $missing) . '.';
         $message_type = 'error';
@@ -213,14 +300,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         // Validate Department and Course/Strand against DB (Option C hybrid)
         try {
             require_once 'db.php';
-            $deptStmt = $conn->prepare("SELECT department_id, name, code, is_active FROM departments WHERE name = ? LIMIT 1");
+            $deptStmt = $conn->prepare("SELECT department_id, department_name AS name, code, is_active FROM departments WHERE department_name = ? LIMIT 1");
             $deptStmt->execute([$department]);
             $deptRow = $deptStmt->fetch(PDO::FETCH_ASSOC);
             if (!$deptRow || (int)$deptRow['is_active'] !== 1) {
                 $message = "Invalid department selected.";
                 $message_type = 'error';
             } else {
-                $isSHS = (strtolower($deptRow['name']) === 'senior high school' || strtolower((string)$deptRow['code']) === 'shs');
+                $isSHS = (stripos($deptRow['name'], 'senior high') !== false || strtolower((string)$deptRow['code']) === 'shs');
                 if ($isSHS) {
                     // Validate selected strand name and map to strand_id
                     $sid = null;
@@ -228,7 +315,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         $sStmt = $conn->prepare("SELECT strand_id FROM strands WHERE strand = ? LIMIT 1");
                         $sStmt->execute([$strand_name !== '' ? $strand_name : $course_strand]);
                         $sid = (int)($sStmt->fetchColumn());
-                    } catch (Throwable $_) { $sid = null; }
+                    } catch (Throwable $_) {
+                        $sid = null;
+                    }
                     if (!$sid) {
                         $message = "Invalid or missing strand.";
                         $message_type = 'error';
@@ -253,18 +342,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
         } catch (Throwable $e) {
             // If validation fails due to DB error, provide message
-            if (!$message) { $message = 'Validation error: ' . htmlspecialchars($e->getMessage()); $message_type = 'error'; }
+            if (!$message) {
+                $message = 'Validation error: ' . htmlspecialchars($e->getMessage());
+                $message_type = 'error';
+            }
         }
 
         // Prepare upload directories
         $uploadsBase = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
         $imgDir = $uploadsBase . DIRECTORY_SEPARATOR . 'research_images';
         $docDir = $uploadsBase . DIRECTORY_SEPARATOR . 'research_documents';
-        if (!is_dir($uploadsBase)) { @mkdir($uploadsBase, 0755, true); }
-        if (!is_dir($imgDir)) { @mkdir($imgDir, 0755, true); }
-        if (!is_dir($docDir)) { @mkdir($docDir, 0755, true); }
+        if (!is_dir($uploadsBase)) {
+            @mkdir($uploadsBase, 0755, true);
+        }
+        if (!is_dir($imgDir)) {
+            @mkdir($imgDir, 0755, true);
+        }
+        if (!is_dir($docDir)) {
+            @mkdir($docDir, 0755, true);
+        }
         // Attempt to ensure writability (best-effort, ignore failures on restrictive hosts)
-        if (!is_writable($docDir)) { @chmod($docDir, 0755); }
+        if (!is_writable($docDir)) {
+            @chmod($docDir, 0755);
+        }
 
         // Upload image (optional)
         if (!empty($_FILES['image']['name'])) {
@@ -282,7 +382,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $finfo = function_exists('finfo_open') ? finfo_open(FILEINFO_MIME_TYPE) : false;
                 $mime = $finfo ? finfo_file($finfo, $imgTmp) : null;
                 if ($finfo) finfo_close($finfo);
-                $allowedMime = ['image/jpeg','image/png','image/gif'];
+                $allowedMime = ['image/jpeg', 'image/png', 'image/gif'];
 
                 if (in_array($imgExt, $allowedExts) && ($mime === null || in_array($mime, $allowedMime)) && $imgSize < 10 * 1024 * 1024) {
                     $destRel = 'uploads/research_images/' . uniqid('img_') . '.' . $imgExt;
@@ -330,8 +430,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $isPdfMimeOk = ($mime === null) || in_array(strtolower($mime), $allowedPdfMimes, true);
 
                 if ($docExt === 'pdf' && $isPdfMimeOk && $docSize < 25 * 1024 * 1024) {
-                    // Check if a research with same title exists in books (case-insensitive)
-                    $check_stmt = $conn->prepare("SELECT book_id FROM books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1");
+                    // Check if a research with same title exists in cap_books (case-insensitive)
+                    $check_stmt = $conn->prepare("SELECT book_id FROM cap_books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1");
                     $check_stmt->execute([$title]);
                     if ($check_stmt->rowCount() > 0) {
                         $message = "A research with this title already exists in the repository. Please use a different title.";
@@ -363,7 +463,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             try {
                 // For admin uploads, set student_id to NULL and adviser_id to current admin
                 $adviser_id = $_SESSION['admin_id'] ?? null;
-                $stmt = $conn->prepare("INSERT INTO books (student_id, adviser_id, title, year, abstract, keywords, authors, department, course_strand, document, image, status) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+                $stmt = $conn->prepare("INSERT INTO cap_books (student_id, adviser_id, title, year, abstract, keywords, authors, department, course_strand, document, image, status) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
                 $stmt->execute([$adviser_id, $title, $year, $abstract, $keywords, $author, $department, $course_strand, $document, $image]);
 
                 // Activity log
@@ -388,6 +488,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -399,17 +500,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
         }
+
         .card-hover:hover {
             transform: translateY(-6px);
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         }
+
         .upload-card {
             border: 2px dashed #3b82f6;
         }
+
         .upload-card:hover {
             border-color: #1d4ed8;
             background-color: #eff6ff;
         }
+
         .section-header::after {
             content: '';
             position: absolute;
@@ -423,6 +528,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         }
     </style>
 </head>
+
 <body class="bg-gray-50 min-h-screen flex">
 
     <!-- Include Sidebar -->
@@ -440,8 +546,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     <i class="fas fa-bell mr-3"></i>
                     <span><?= htmlspecialchars($message) ?></span>
                 </div>
-                <button onclick="document.getElementById('alert-message').remove()" 
-                        class="absolute top-0 right-0 m-2 text-gray-500 hover:text-gray-700">
+                <button onclick="document.getElementById('alert-message').remove()"
+                    class="absolute top-0 right-0 m-2 text-gray-500 hover:text-gray-700">
                     <i class="fas fa-times text-lg"></i>
                 </button>
             </div>
@@ -478,8 +584,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                                 <i class="fas fa-book"></i>
                             </div>
                             <input type="text" name="title" value="<?= htmlspecialchars($_POST['title'] ?? '') ?>"
-                                   class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                   placeholder="Enter research title" required>
+                                class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Enter research title" required>
                         </div>
                     </div>
                     <div>
@@ -511,16 +617,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Abstract *</label>
                     <textarea name="abstract" rows="4"
-                              class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="Enter a brief summary of your research..." required><?= htmlspecialchars($_POST['abstract'] ?? '') ?></textarea>
+                        class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter a brief summary of your research..." required><?= htmlspecialchars($_POST['abstract'] ?? '') ?></textarea>
                 </div>
 
                 <!-- Keywords -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Keywords (comma-separated)</label>
                     <input type="text" name="keywords" value="<?= htmlspecialchars($_POST['keywords'] ?? '') ?>"
-                           class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           placeholder="e.g., machine learning, climate change, data mining">
+                        class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., machine learning, climate change, data mining">
                     <p class="text-xs text-gray-500 mt-1">Add 3–8 keywords separated by commas to improve search visibility.</p>
                 </div>
 
@@ -528,8 +634,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Author(s) *</label>
                     <textarea name="author" rows="2"
-                              class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="Enter author names separated by commas" required><?= htmlspecialchars($_POST['author'] ?? '') ?></textarea>
+                        class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter author names separated by commas" required><?= htmlspecialchars($_POST['author'] ?? '') ?></textarea>
                 </div>
 
                 <!-- Department, Course/Strand & Status -->
@@ -544,17 +650,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                                 <?php if (!empty($server_departments)): ?>
                                     <option value="" <?php echo $preselectedDeptPHP === '' ? 'selected' : ''; ?>>Select Department</option>
                                     <?php foreach ($server_departments as $d): ?>
-                                        <?php 
-                                            $name = isset($d['name']) ? (string)$d['name'] : ''; 
-                                            $did  = isset($d['id']) ? (int)$d['id'] : 0;
-                                            $code = isset($d['code']) ? (string)$d['code'] : '';
+                                        <?php
+                                        $name = isset($d['name']) ? (string)$d['name'] : '';
+                                        $did  = isset($d['id']) ? (int)$d['id'] : 0;
+                                        $code = isset($d['code']) ? (string)$d['code'] : '';
                                         ?>
-                                        <option 
+                                        <option
                                             value="<?php echo htmlspecialchars($name, ENT_QUOTES); ?>"
                                             <?php echo ($preselectedDeptPHP === $name) ? 'selected' : ''; ?>
-                                            <?php if ($did) { echo ' data-dept-id="' . $did . '"'; } ?>
-                                            <?php if ($code !== '') { echo ' data-code="' . htmlspecialchars($code, ENT_QUOTES) . '"'; } ?>
-                                        >
+                                            <?php if ($did) {
+                                                echo ' data-dept-id="' . $did . '"';
+                                            } ?>
+                                            <?php if ($code !== '') {
+                                                echo ' data-code="' . htmlspecialchars($code, ENT_QUOTES) . '"';
+                                            } ?>>
                                             <?php echo htmlspecialchars($name); ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -593,23 +702,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                                 <i class="fas fa-graduation-cap"></i>
                             </div>
                             <select name="course_strand" id="course_strand" class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                <?php 
-                                    $initialCourseOptions = !empty($server_strand_courses) ? $server_strand_courses : $server_course_strand_options;
+                                <?php
+                                $initialCourseOptions = !empty($server_strand_courses) ? $server_strand_courses : $server_course_strand_options;
                                 ?>
                                 <?php if (!empty($initialCourseOptions)): ?>
                                     <option value="">Select Course/Strand</option>
                                     <?php foreach ($initialCourseOptions as $opt): ?>
                                         <?php
-                                            if (is_array($opt)) {
-                                                $val = (string)($opt['name'] ?? '');
-                                                $code = isset($opt['code']) && $opt['code'] !== null && $opt['code'] !== '' ? ' (' . $opt['code'] . ')' : '';
-                                                $label = $val . $code;
-                                                $isSel = ($preselectedCoursePHP === $val);
-                                            } else {
-                                                $val = (string)$opt;
-                                                $label = $val; // strand courses may not have codes on server fallback
-                                                $isSel = ($preselectedCoursePHP === $val);
-                                            }
+                                        if (is_array($opt)) {
+                                            $val = (string)($opt['name'] ?? '');
+                                            $code = isset($opt['code']) && $opt['code'] !== null && $opt['code'] !== '' ? ' (' . $opt['code'] . ')' : '';
+                                            $label = $val . $code;
+                                            $isSel = ($preselectedCoursePHP === $val);
+                                        } else {
+                                            $val = (string)$opt;
+                                            $label = $val; // strand courses may not have codes on server fallback
+                                            $isSel = ($preselectedCoursePHP === $val);
+                                        }
                                         ?>
                                         <option value="<?php echo htmlspecialchars($val, ENT_QUOTES); ?>" <?php echo $isSel ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($label); ?>
@@ -642,7 +751,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                                 <i class="fas fa-image"></i>
                             </div>
                             <input type="file" name="image" accept="image/*"
-                                   class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
+                                class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
                         </div>
                     </div>
                     <div>
@@ -652,7 +761,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                                 <i class="fas fa-file-pdf"></i>
                             </div>
                             <input type="file" name="document" accept=".pdf"
-                                   class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
+                                class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
                         </div>
                     </div>
                 </div>
@@ -668,7 +777,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     <script>
         // Dynamic Department and Course/Strand loading (DB-backed)
-        (function(){
+        (function() {
             const deptSel = document.getElementById('department');
             const csSel = document.getElementById('course_strand');
             const csLabel = document.getElementById('course_label');
@@ -692,7 +801,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 if (!deptName) return 'A.Y.'; // default
                 const dn = String(deptName).trim().toLowerCase();
                 // Senior High School => S.Y.
-                if (dn === 'senior high school' || dn === 'shs') return 'S.Y.';
+                if (dn === 'senior high school' || dn === 'shs' || dn.includes('senior high')) return 'S.Y.';
                 // CCS, COE, CBS and others => A.Y.
                 return 'A.Y.';
             }
@@ -720,7 +829,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 }
             }
 
-            function loadAcademicYears(){
+            function loadAcademicYears() {
                 // Static: use serverYearSpans only
                 cachedYearSpans = Array.isArray(serverYearSpans) ? serverYearSpans.slice() : [];
                 const opt = deptSel.options[deptSel.selectedIndex];
@@ -729,7 +838,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 rebuildYearOptions(prefix);
             }
 
-            function loadDepartments(){
+            function loadDepartments() {
                 // Static: departments are already server-rendered; ensure dataset attributes exist
                 if (serverDepartments && serverDepartments.length) {
                     const seen = new Set();
@@ -754,7 +863,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             const strandSel = document.getElementById('strand_select');
             const strandContainer = document.getElementById('strand_container');
 
-            function loadStrands(){
+            function loadStrands() {
                 // Static: use serverStrands only
                 strandContainer.classList.remove('hidden');
                 strandSel.innerHTML = '<option value="">Select Strand</option>';
@@ -767,11 +876,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         if (s.id !== undefined && s.id !== null) opt.dataset.strandId = s.id;
                         strandSel.appendChild(opt);
                     });
-                    if (preselectedStrand) { strandSel.value = preselectedStrand; }
+                    if (preselectedStrand) {
+                        strandSel.value = preselectedStrand;
+                    }
                 }
             }
 
-            function loadStrandCourses(strandName){
+            function loadStrandCourses(strandName) {
                 // Static: use coursesByStrand map
                 csSel.innerHTML = '<option value="">Select Course</option>';
                 const list = (strandName && coursesByStrand[strandName]) ? coursesByStrand[strandName] : [];
@@ -781,10 +892,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     opt.textContent = c.name + (c.code ? ` (${c.code})` : '');
                     csSel.appendChild(opt);
                 });
-                if (preselectedCourse) { csSel.value = preselectedCourse; }
+                if (preselectedCourse) {
+                    csSel.value = preselectedCourse;
+                }
             }
 
-            function loadCoursesForDepartmentId(deptId, deptName, deptCode){
+            function loadCoursesForDepartmentId(deptId, deptName, deptCode) {
                 // Static: use coursesByDepartment map by deptName
                 csSel.innerHTML = '<option value="">Select Course</option>';
                 const list = (deptName && coursesByDepartment[deptName]) ? coursesByDepartment[deptName] : [];
@@ -801,21 +914,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     nopt.disabled = true;
                     csSel.appendChild(nopt);
                 }
-                if (preselectedCourse) { csSel.value = preselectedCourse; }
+                if (preselectedCourse) {
+                    csSel.value = preselectedCourse;
+                }
             }
 
-            async function onDepartmentChange(){
+            async function onDepartmentChange() {
                 const opt = deptSel.options[deptSel.selectedIndex];
                 let deptId = opt ? opt.dataset.deptId : '';
                 const deptName = opt ? opt.value : '';
-                
+
                 if (!deptName) {
                     csLabel.textContent = 'Course/Strand';
                     csSel.innerHTML = '<option value="">Select Course/Strand</option>';
                     rebuildYearOptions(currentYearPrefixForDeptName(''));
                     return;
                 }
-                
+
                 if (!deptId) {
                     // Try to resolve deptId from serverDepartments by name
                     if (serverDepartments && serverDepartments.length && deptName) {
@@ -823,7 +938,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         if (found && found.id) deptId = String(found.id);
                     }
                 }
-                
+
                 const deptCode = opt && opt.dataset && opt.dataset.code ? String(opt.dataset.code) : '';
                 const codeLc = deptCode ? deptCode.toLowerCase() : '';
                 if (deptName.toLowerCase() === 'senior high school' || codeLc === 'shs') {
@@ -832,7 +947,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     loadStrands();
                     // Load courses for selected strand if any (by name)
                     const sName = strandSel.value || '';
-                    if (sName) loadStrandCourses(sName); else csSel.innerHTML = '<option value="">Select Course</option>';
+                    if (sName) loadStrandCourses(sName);
+                    else csSel.innerHTML = '<option value="">Select Course</option>';
                 } else {
                     csLabel.textContent = 'Course';
                     strandContainer.classList.add('hidden');
@@ -843,7 +959,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
 
             // Pre-populate from server data immediately (no network)
-            (function immediatePopulate(){
+            (function immediatePopulate() {
                 // Department
                 if (serverDepartments && serverDepartments.length) {
                     const keep = deptSel.value;
@@ -870,7 +986,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         csSel.appendChild(option);
                     });
                     if (preselectedCourse) csSel.value = preselectedCourse;
-                    
+
                     // Update label based on department
                     const deptOpt = deptSel.options[deptSel.selectedIndex];
                     const deptName = deptOpt ? deptOpt.value : '';
@@ -915,7 +1031,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             })();
 
             // Update department option metadata after initial population
-            (function updateDeptMetadata(){
+            (function updateDeptMetadata() {
                 if (serverDepartments && serverDepartments.length) {
                     serverDepartments.forEach(d => {
                         const name = d.name || '';
@@ -935,11 +1051,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             loadAcademicYears();
             onDepartmentChange();
             deptSel.addEventListener('change', onDepartmentChange);
-            strandSel.addEventListener('change', function(){
+            strandSel.addEventListener('change', function() {
                 const sName = strandSel.value || '';
                 loadStrandCourses(sName);
             });
         })();
     </script>
 </body>
+
 </html>

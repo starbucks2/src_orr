@@ -16,14 +16,45 @@ if (
     // Fallback: if a sub-admin is logged in but user_type/department not set, derive from employees
     if (!empty($_SESSION['subadmin_id']) && $conn) {
         try {
+            // Detect schema features
+            $hasRoleIDCol = false;
+            try {
+                $qCol = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role_id'");
+                $qCol->execute();
+                $hasRoleIDCol = ((int)$qCol->fetchColumn() > 0);
+            } catch (Throwable $_) {
+            }
+
+            $hasRolesTable = false;
+            try {
+                $qTbl = $conn->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles'");
+                $qTbl->execute();
+                $hasRolesTable = ((int)$qTbl->fetchColumn() > 0);
+            } catch (Throwable $_) {
+            }
+
             // Get department via employees.department_id when available; fallback to legacy employees.department
             // role_id = 2 for RESEARCH_ADVISER
-            $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
-                                     FROM employees e
-                                     INNER JOIN roles r ON e.employee_id = r.employee_id
-                                     LEFT JOIN departments d ON d.department_id = e.department_id
-                                     WHERE e.employee_id = ? AND r.role_id = 2
-                                     LIMIT 1");
+            if ($hasRoleIDCol) {
+                $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
+                                         FROM employees e
+                                         LEFT JOIN departments d ON d.department_id = e.department_id
+                                         WHERE e.employee_id = ? AND e.role_id = 2
+                                         LIMIT 1");
+            } elseif ($hasRolesTable) {
+                $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
+                                         FROM employees e
+                                         INNER JOIN roles r ON e.role_id = r.role_id
+                                         LEFT JOIN departments d ON d.department_id = e.department_id
+                                         WHERE e.employee_id = ? AND r.role_id = 2
+                                         LIMIT 1");
+            } else {
+                $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
+                                         FROM employees e
+                                         LEFT JOIN departments d ON d.department_id = e.department_id
+                                         WHERE e.employee_id = ? AND e.role = 'Research Adviser'
+                                         LIMIT 1");
+            }
             $qDept->execute([$_SESSION['subadmin_id']]);
             $dept = (string)($qDept->fetchColumn() ?: '');
             if ($dept !== '') {
@@ -147,9 +178,9 @@ if ($conn) {
     } catch (Throwable $_) { /* ignore */
     }
     try {
-        // Also include spans found in existing data (books and research_submission)
+        // Also include spans found in existing data (cap_books and research_submission)
         $qYears = "SELECT DISTINCT TRIM(SUBSTRING_INDEX(y, ' ', -1)) AS span FROM (
-                    SELECT year AS y FROM books WHERE year IS NOT NULL AND TRIM(year) <> ''
+                    SELECT year AS y FROM cap_books WHERE year IS NOT NULL AND TRIM(year) <> ''
                     UNION ALL
                     SELECT year AS y FROM research_submission WHERE year IS NOT NULL AND TRIM(year) <> ''
                ) t
@@ -203,7 +234,7 @@ if ($conn) {
             COALESCE(b.submission_date, NOW()) AS submission_date,
             b.student_id,
             'admin' AS uploader_type
-        FROM books b
+        FROM cap_books b
         WHERE b.status = 1";
 
         $base_union = '(' . $base_books;
@@ -411,24 +442,24 @@ if ($conn) {
         // Total items after count
         $filtered_total_items = $total_items;
 
-        // If nothing is found (hosting join/view differences), fallback to books-only listing with department filter
+        // If nothing is found (hosting join/view differences), fallback to cap_books-only listing with department filter
         if ($filtered_total_items === 0) {
             try {
-                // Fallback query: show approved admin books, filtered by selected department
+                // Fallback query: show approved admin cap_books, filtered by selected department
                 $fallback_where = " WHERE b.status = 1";
                 $fallback_params = [];
-                
+
                 // Apply academic year filter in fallback too
                 $fallback_where .= " AND b.year LIKE ?";
                 $fallback_params[] = $__ay_like;
-                
+
                 // Apply department filter in fallback too
                 if ($curr_dept) {
                     $fallback_where .= " AND (TRIM(LOWER(b.department)) = TRIM(LOWER(?)) OR b.department LIKE ?)";
                     $fallback_params[] = $curr_dept;
                     $fallback_params[] = '%' . $curr_dept . '%';
                 }
-                
+
                 $sql = "SELECT 
                         b.book_id AS id,
                         b.title,
@@ -445,7 +476,7 @@ if ($conn) {
                         COALESCE(b.submission_date, NOW()) AS submission_date,
                         NULL AS student_id,
                         'admin' AS uploader_type
-                    FROM books b
+                    FROM cap_books b
                     " . $fallback_where . "
                     ORDER BY b.submission_date DESC LIMIT 100";
 
@@ -457,22 +488,22 @@ if ($conn) {
             }
         }
     } catch (PDOException $e) {
-        // Fallback: books-only listing (admin uploads) - also respect department filter
+        // Fallback: cap_books-only listing (admin uploads) - also respect department filter
         try {
             $fallback_where = " WHERE b.status = 1";
             $fallback_params = [];
-            
+
             // Apply academic year filter in PDOException fallback too
             $fallback_where .= " AND b.year LIKE ?";
             $fallback_params[] = $__ay_like;
-            
+
             // Apply department filter in PDOException fallback too
             if ($curr_dept) {
                 $fallback_where .= " AND (TRIM(LOWER(b.department)) = TRIM(LOWER(?)) OR b.department LIKE ?)";
                 $fallback_params[] = $curr_dept;
                 $fallback_params[] = '%' . $curr_dept . '%';
             }
-            
+
             $sql = "SELECT 
                     b.book_id AS id,
                     b.title,
@@ -489,7 +520,7 @@ if ($conn) {
                     COALESCE(b.submission_date, NOW()) AS submission_date,
                     NULL AS student_id,
                     'admin' AS uploader_type
-                FROM books b
+                FROM cap_books b
                 " . $fallback_where . "
                 ORDER BY b.submission_date DESC LIMIT 100";
 
@@ -1187,26 +1218,26 @@ if ($conn) {
             </div>
         </div>
 
-                <!-- Pagination Controls -->
-                <?php if (isset($total_pages) && $total_pages > 1): ?>
-                    <div class="mt-4 flex items-center justify-center gap-3">
-                        <?php
-                        // Preserve existing query params and update `page`
-                        $qp = $_GET;
-                        if ($current_page > 1) {
-                            $qp['page'] = $current_page - 1;
-                            echo '<a href="repository.php?' . htmlspecialchars(http_build_query($qp)) . '" class="px-3 py-1 bg-white border rounded text-blue-600 hover:bg-gray-50">&larr; Prev</a>';
-                        }
-                        echo '<span class="px-3 py-1 text-sm text-gray-700">Page ' . (int)$current_page . ' of ' . (int)$total_pages . '</span>';
-                        if ($current_page < $total_pages) {
-                            $qp['page'] = $current_page + 1;
-                            echo '<a href="repository.php?' . htmlspecialchars(http_build_query($qp)) . '" class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">Next &rarr;</a>';
-                        }
-                        ?>
-                    </div>
-                <?php endif; ?>
+        <!-- Pagination Controls -->
+        <?php if (isset($total_pages) && $total_pages > 1): ?>
+            <div class="mt-4 flex items-center justify-center gap-3">
+                <?php
+                // Preserve existing query params and update `page`
+                $qp = $_GET;
+                if ($current_page > 1) {
+                    $qp['page'] = $current_page - 1;
+                    echo '<a href="repository.php?' . htmlspecialchars(http_build_query($qp)) . '" class="px-3 py-1 bg-white border rounded text-blue-600 hover:bg-gray-50">&larr; Prev</a>';
+                }
+                echo '<span class="px-3 py-1 text-sm text-gray-700">Page ' . (int)$current_page . ' of ' . (int)$total_pages . '</span>';
+                if ($current_page < $total_pages) {
+                    $qp['page'] = $current_page + 1;
+                    echo '<a href="repository.php?' . htmlspecialchars(http_build_query($qp)) . '" class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">Next &rarr;</a>';
+                }
+                ?>
+            </div>
+        <?php endif; ?>
 
-                <!-- Search & Filter Script -->
+        <!-- Search & Filter Script -->
         <script>
             function filterBy(department) {
                 const u = new URL(window.location.href);

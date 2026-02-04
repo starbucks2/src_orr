@@ -5,7 +5,8 @@
 require_once __DIR__ . '/db.php';
 header('Content-Type: text/plain; charset=utf-8');
 
-function ensureColumn(PDO $conn, string $table, string $column, string $definition): void {
+function ensureColumn(PDO $conn, string $table, string $column, string $definition): void
+{
     try {
         $q = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
         $q->execute([$table, $column]);
@@ -89,17 +90,17 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     echo "Ensured table: research_submission\n";
 
-    // bookmarks table
-    $conn->exec("CREATE TABLE IF NOT EXISTS bookmarks (
+    // cap_bookmarks table
+    $conn->exec("CREATE TABLE IF NOT EXISTS cap_bookmarks (
         id INT AUTO_INCREMENT PRIMARY KEY,
         student_id VARCHAR(32) NOT NULL,
-        paper_id INT NOT NULL,
+        book_id INT NOT NULL,
         bookmarked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_bookmark (student_id, paper_id),
+        UNIQUE KEY uniq_bookmark (student_id, book_id),
         INDEX idx_student (student_id),
-        INDEX idx_paper (paper_id)
+        INDEX idx_book (book_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    echo "Ensured table: bookmarks\n";
+    echo "Ensured table: cap_bookmarks\n";
 
 
     // activity_logs table (if include not yet created it)
@@ -136,11 +137,11 @@ try {
         if ((int)$hasMembers->fetchColumn() > 0) {
             $conn->exec("UPDATE research_submission SET author = members WHERE (author IS NULL OR author = '') AND members IS NOT NULL AND members != ''");
         }
-    } catch (Throwable $e) { /* ignore */ }
+    } catch (Throwable $e) { /* ignore */
+    }
 
     echo "\nAll core tables ensured for database: Src_db\n";
     echo "You can now log in and use the system.\n";
-
 } catch (Throwable $e) {
     http_response_code(500);
     echo "Setup failed: " . $e->getMessage() . "\n";

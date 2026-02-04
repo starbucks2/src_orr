@@ -17,7 +17,7 @@ $allowedRoles = [
     ['role_id' => 2, 'role_name' => 'RESEARCH_ADVISER', 'display_name' => 'Research Adviser'],
 ];
 
-    // Check if form is submitted
+// Check if form is submitted
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $first_name = trim($_POST['first_name'] ?? '');
     $last_name = trim($_POST['last_name'] ?? '');
@@ -27,8 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $department = $_POST['department'];
     $profilePicName = null;
     $role_name = isset($_POST['role_name']) ? strtoupper(str_replace(' ', '_', trim($_POST['role_name']))) : 'RESEARCH_ADVISER';
-    $allowedRoleNames = array_map(function($r){ return strtoupper($r['role_name']); }, $allowedRoles);
-    
+    $allowedRoleNames = array_map(function ($r) {
+        return strtoupper($r['role_name']);
+    }, $allowedRoles);
+
     // Since all permissions are checked by default, we'll use the default permissions
     // No need to check selected permissions since we want all permissions active
     $permissions = [
@@ -43,25 +45,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Validate inputs
     $errors = [];
 
-    if ($first_name === '') { $errors[] = "First name is required"; }
-    if ($last_name === '') { $errors[] = "Last name is required"; }
-    
+    if ($first_name === '') {
+        $errors[] = "First name is required";
+    }
+    if ($last_name === '') {
+        $errors[] = "Last name is required";
+    }
+
     if (empty($email)) {
         $errors[] = "Email is required";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = "Invalid email format";
     }
-    
+
     if (empty($password)) {
         $errors[] = "Password is required";
     } elseif (strlen($password) < 8) {
         $errors[] = "Password must be at least 8 characters";
     }
-    
+
     if ($password !== $confirm_password) {
         $errors[] = "Passwords do not match";
     }
-    
+
     // Validate role selection
     if (!in_array($role_name, $allowedRoleNames, true)) {
         $errors[] = "Invalid role. Please choose Dean or Research Adviser.";
@@ -75,11 +81,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $qCols = $conn->prepare("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'");
         $qCols->execute();
         $cols = $qCols->fetchAll(PDO::FETCH_COLUMN, 0);
-        if (in_array('first_name', $cols, true)) { $firstCol = 'first_name'; }
-        elseif (in_array('firstname', $cols, true)) { $firstCol = 'firstname'; }
-        if (in_array('last_name', $cols, true)) { $lastCol = 'last_name'; }
-        elseif (in_array('lastname', $cols, true)) { $lastCol = 'lastname'; }
-    } catch (Throwable $_) { /* leave nulls */ }
+        if (in_array('first_name', $cols, true)) {
+            $firstCol = 'first_name';
+        } elseif (in_array('firstname', $cols, true)) {
+            $firstCol = 'firstname';
+        }
+        if (in_array('last_name', $cols, true)) {
+            $lastCol = 'last_name';
+        } elseif (in_array('lastname', $cols, true)) {
+            $lastCol = 'lastname';
+        }
+    } catch (Throwable $_) { /* leave nulls */
+    }
     // Build a safe fullname expression
     $nameExpr = ($firstCol && $lastCol)
         ? ("TRIM(CONCAT_WS(' ', `$firstCol`, `$lastCol`))")
@@ -120,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $ext = $allowed[$mime];
                 $base = pathinfo($_FILES['profile_pic']['name'], PATHINFO_FILENAME);
                 $safeBase = preg_replace('/[^a-zA-Z0-9_-]/', '_', $base);
-                $profilePicName = 'subadmin_' . time() . '_' . mt_rand(1000,9999) . '_' . $safeBase . '.' . $ext;
+                $profilePicName = 'subadmin_' . time() . '_' . mt_rand(1000, 9999) . '_' . $safeBase . '.' . $ext;
                 $dest = __DIR__ . '/images/' . $profilePicName;
                 if (!move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
                     $errors[] = 'Failed to save uploaded profile picture.';
@@ -150,7 +163,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $row = $mx->fetch(PDO::FETCH_ASSOC);
                 $next = (int)($row['max_id'] ?? 0) + 1;
                 $employee_id = str_pad((string)$next, 3, '0', STR_PAD_LEFT);
-            } catch (Throwable $_) { /* fallback keeps '001' */ }
+            } catch (Throwable $_) { /* fallback keeps '001' */
+            }
 
             // Insert into employees as Research Adviser (robust to missing columns)
             try {
@@ -161,39 +175,59 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $qDept = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'department'");
                     $qDept->execute();
                     $hasDeptCol = ((int)$qDept->fetchColumn() > 0);
-                } catch (Throwable $_) { $hasDeptCol = false; }
+                } catch (Throwable $_) {
+                    $hasDeptCol = false;
+                }
                 try {
                     $qDeptId = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'department_id'");
                     $qDeptId->execute();
                     $hasDeptIdCol = ((int)$qDeptId->fetchColumn() > 0);
-                } catch (Throwable $_) { $hasDeptIdCol = false; }
+                } catch (Throwable $_) {
+                    $hasDeptIdCol = false;
+                }
                 try {
                     $qPerm = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'permissions'");
                     $qPerm->execute();
                     $hasPermCol = ((int)$qPerm->fetchColumn() > 0);
-                } catch (Throwable $_) { $hasPermCol = false; }
+                } catch (Throwable $_) {
+                    $hasPermCol = false;
+                }
                 try {
                     $qPic = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'profile_pic'");
                     $qPic->execute();
                     $hasPicCol = ((int)$qPic->fetchColumn() > 0);
-                } catch (Throwable $_) { $hasPicCol = false; }
+                } catch (Throwable $_) {
+                    $hasPicCol = false;
+                }
 
                 // Resolve department_id from input department label (matches by code or name)
                 $deptIdVal = null;
                 try {
-                    $q = $conn->prepare("SELECT department_id FROM departments WHERE LOWER(TRIM(code)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
+                    $q = $conn->prepare("SELECT department_id FROM departments WHERE LOWER(TRIM(code)) = LOWER(TRIM(?)) OR LOWER(TRIM(department_name)) = LOWER(TRIM(?)) LIMIT 1");
                     $q->execute([$department, $department]);
                     $did = $q->fetchColumn();
-                    if ($did !== false && $did !== null) { $deptIdVal = (int)$did; }
-                } catch (Throwable $_) { $deptIdVal = null; }
+                    if ($did !== false && $did !== null) {
+                        $deptIdVal = (int)$did;
+                    }
+                } catch (Throwable $_) {
+                    $deptIdVal = null;
+                }
 
                 // Build columns/values
                 $cols = ['employee_id'];
                 $vals = [$employee_id];
-                if ($firstCol) { $cols[] = $firstCol; $vals[] = $first; }
-                if ($lastCol)  { $cols[] = $lastCol;  $vals[] = $last; }
-                $cols[] = 'email';    $vals[] = $email;
-                $cols[] = 'password'; $vals[] = $hashed_password;
+                if ($firstCol) {
+                    $cols[] = $firstCol;
+                    $vals[] = $first;
+                }
+                if ($lastCol) {
+                    $cols[] = $lastCol;
+                    $vals[] = $last;
+                }
+                $cols[] = 'email';
+                $vals[] = $email;
+                $cols[] = 'password';
+                $vals[] = $hashed_password;
                 // If role_id column exists on employees, set it using fixed role ids
                 try {
                     $hasRoleIdCol = false;
@@ -202,13 +236,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $hasRoleIdCol = ((int)$qRID->fetchColumn() > 0);
                     if ($hasRoleIdCol) {
                         $rid = ($role_name === 'DEAN') ? 1 : 2;
-                        $cols[] = 'role_id'; $vals[] = $rid;
+                        $cols[] = 'role_id';
+                        $vals[] = $rid;
                     }
-                } catch (Throwable $_) { /* ignore */ }
-                if ($hasDeptIdCol && $deptIdVal !== null) { $cols[] = 'department_id'; $vals[] = $deptIdVal; }
-                if ($hasDeptCol) { $cols[] = 'department'; $vals[] = $department; }
-                if ($hasPermCol) { $cols[] = 'permissions'; $vals[] = $permissions_json; }
-                if ($hasPicCol && $profilePicName) { $cols[] = 'profile_pic'; $vals[] = $profilePicName; }
+                } catch (Throwable $_) { /* ignore */
+                }
+                if ($hasDeptIdCol && $deptIdVal !== null) {
+                    $cols[] = 'department_id';
+                    $vals[] = $deptIdVal;
+                }
+                if ($hasDeptCol) {
+                    $cols[] = 'department';
+                    $vals[] = $department;
+                }
+                if ($hasPermCol) {
+                    $cols[] = 'permissions';
+                    $vals[] = $permissions_json;
+                }
+                if ($hasPicCol && $profilePicName) {
+                    $cols[] = 'profile_pic';
+                    $vals[] = $profilePicName;
+                }
 
                 $placeholders = rtrim(str_repeat('?,', count($cols)), ',');
                 $sql = "INSERT INTO employees (" . implode(',', $cols) . ") VALUES ($placeholders)";
@@ -236,8 +284,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 try {
                     $rid = ($role_name === 'DEAN') ? 1 : 2;
                     $conn->prepare("INSERT INTO roles (employee_id, role_id, role_name, display_name, is_active) VALUES (?, ?, ?, ?, 1) ON DUPLICATE KEY UPDATE role_id = VALUES(role_id), role_name = VALUES(role_name), display_name = VALUES(display_name), is_active = VALUES(is_active)")
-                         ->execute([$employee_id, $rid, ($rid===1?'DEAN':'RESEARCH_ADVISER'), ($rid===1?'Dean':'Research Adviser')]);
-                } catch (Throwable $_) { /* ignore silently */ }
+                        ->execute([$employee_id, $rid, ($rid === 1 ? 'DEAN' : 'RESEARCH_ADVISER'), ($rid === 1 ? 'Dean' : 'Research Adviser')]);
+                } catch (Throwable $_) { /* ignore silently */
+                }
 
                 // Success only after insert
                 $_SESSION['success'] = "Sub-admin created successfully!";
@@ -255,6 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -267,18 +317,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             transform: translateY(-5px);
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
+
         .permission-card {
             transition: all 0.3s ease;
         }
+
         .permission-card:hover {
             transform: translateY(-2px);
         }
+
         .permission-card.active {
             border: 2px solid #3b82f6;
             background-color: rgba(59, 130, 246, 0.1);
         }
     </style>
 </head>
+
 <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col lg:flex-row overflow-x-hidden">
     <!-- Include the sidebar -->
     <?php include 'admin_sidebar.php'; ?>
@@ -341,7 +395,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <div class="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
                     <div class="flex items-center">
                         <i class="fas fa-check-circle mr-2"></i>
-                        <span><?= htmlspecialchars($_SESSION['success']); unset($_SESSION['success']); ?></span>
+                        <span><?= htmlspecialchars($_SESSION['success']);
+                                unset($_SESSION['success']); ?></span>
                     </div>
                 </div>
             <?php endif; ?>
@@ -365,11 +420,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             icon: 'error',
                             title: 'Please fix the following',
                             html: <?php
-                                $list = '<ul style="text-align:left; margin-left:1rem;">';
-                                foreach ($errors as $e) { $list .= '<li>'.htmlspecialchars($e).'</li>'; }
-                                $list .= '</ul>';
-                                echo json_encode($list);
-                            ?>,
+                                    $list = '<ul style="text-align:left; margin-left:1rem;">';
+                                    foreach ($errors as $e) {
+                                        $list .= '<li>' . htmlspecialchars($e) . '</li>';
+                                    }
+                                    $list .= '</ul>';
+                                    echo json_encode($list);
+                                    ?>,
                             confirmButtonText: 'OK'
                         });
                     });
@@ -410,12 +467,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <i class="fas fa-user"></i>
                                     </div>
                                     <input type="text" name="first_name"
-                                           value="<?php echo isset($_POST['first_name']) ? htmlspecialchars($_POST['first_name']) : ''; ?>"
-                                           class="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                                           placeholder="Enter first name" required>
+                                        value="<?php echo isset($_POST['first_name']) ? htmlspecialchars($_POST['first_name']) : ''; ?>"
+                                        class="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                                        placeholder="Enter first name" required>
                                 </div>
                             </div>
-                            
+
                             <!-- Last Name -->
                             <div class="order-4">
                                 <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -426,9 +483,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <i class="fas fa-user"></i>
                                     </div>
                                     <input type="text" name="last_name"
-                                           value="<?php echo isset($_POST['last_name']) ? htmlspecialchars($_POST['last_name']) : ''; ?>"
-                                           class="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                                           placeholder="Enter last name" required>
+                                        value="<?php echo isset($_POST['last_name']) ? htmlspecialchars($_POST['last_name']) : ''; ?>"
+                                        class="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                                        placeholder="Enter last name" required>
                                 </div>
                             </div>
                             <!-- Email -->
@@ -440,10 +497,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-500">
                                         <i class="fas fa-envelope"></i>
                                     </div>
-                                    <input type="email" name="email" 
-                                           value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>" 
-                                           class="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                                           placeholder="Enter email" required>
+                                    <input type="email" name="email"
+                                        value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>"
+                                        class="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                                        placeholder="Enter email" required>
                                 </div>
                             </div>
                             <!-- Password -->
@@ -455,9 +512,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-500">
                                         <i class="fas fa-lock"></i>
                                     </div>
-                                    <input type="password" name="password" id="password" 
-                                           class="w-full pl-10 pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                                           placeholder="Enter password" required>
+                                    <input type="password" name="password" id="password"
+                                        class="w-full pl-10 pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                                        placeholder="Enter password" required>
                                     <button type="button" id="togglePassword" class="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 transition duration-200">
                                         <i class="fas fa-eye"></i>
                                     </button>
@@ -473,9 +530,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-500">
                                         <i class="fas fa-lock"></i>
                                     </div>
-                                    <input type="password" name="confirm_password" id="confirm_password" 
-                                           class="w-full pl-10 pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                                           placeholder="Confirm password" required>
+                                    <input type="password" name="confirm_password" id="confirm_password"
+                                        class="w-full pl-10 pr-12 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                                        placeholder="Confirm password" required>
                                     <button type="button" id="toggleConfirmPassword" class="absolute inset-y-0 right-3 flex items-center text-gray-500 hover:text-gray-700 transition duration-200">
                                         <i class="fas fa-eye"></i>
                                     </button>
@@ -491,7 +548,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <i class="fas fa-book"></i>
                                     </div>
                                     <select name="department" required
-                                           class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 bg-white">
+                                        class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 bg-white">
                                         <option value="" selected>Select Department</option>
                                         <option value="CCS">CCS (College of Computer Studies)</option>
                                         <option value="COE">COE (College of Education)</option>
@@ -530,9 +587,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             const toggleBtn = document.getElementById(toggleBtnId);
             const passwordInput = document.getElementById(passwordInputId);
             const icon = toggleBtn.querySelector('i');
-            
+
             if (!toggleBtn || !passwordInput) return;
-            
+
             toggleBtn.addEventListener('click', function() {
                 const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
                 passwordInput.setAttribute('type', type);
@@ -540,38 +597,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 icon.classList.toggle('fa-eye-slash');
             });
         }
-        
+
         // Setup password toggles
         setupPasswordToggle('togglePassword', 'password');
         setupPasswordToggle('toggleConfirmPassword', 'confirm_password');
-        
+
         // No permission toggling needed as all permissions are automatically assigned
     </script>
     <script>
-    // Live preview for Create Sub-Admin profile picture
-    (function(){
-        const input = document.getElementById('createProfilePicInput');
-        const preview = document.getElementById('createProfilePicPreview');
-        const placeholder = document.getElementById('createProfilePicPlaceholder');
-        if (!input) return;
-        input.addEventListener('change', function(){
-            const file = this.files && this.files[0] ? this.files[0] : null;
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e){
-                    if (preview) {
-                        preview.src = e.target.result;
-                        preview.classList.remove('hidden');
-                    }
-                    if (placeholder) placeholder.classList.add('hidden');
-                };
-                reader.readAsDataURL(file);
-            } else {
-                if (preview) preview.classList.add('hidden');
-                if (placeholder) placeholder.classList.remove('hidden');
-            }
-        });
-    })();
+        // Live preview for Create Sub-Admin profile picture
+        (function() {
+            const input = document.getElementById('createProfilePicInput');
+            const preview = document.getElementById('createProfilePicPreview');
+            const placeholder = document.getElementById('createProfilePicPlaceholder');
+            if (!input) return;
+            input.addEventListener('change', function() {
+                const file = this.files && this.files[0] ? this.files[0] : null;
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        if (preview) {
+                            preview.src = e.target.result;
+                            preview.classList.remove('hidden');
+                        }
+                        if (placeholder) placeholder.classList.add('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    if (preview) preview.classList.add('hidden');
+                    if (placeholder) placeholder.classList.remove('hidden');
+                }
+            });
+        })();
     </script>
 </body>
+
 </html>

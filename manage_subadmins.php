@@ -25,10 +25,24 @@ if (isset($_GET['archive'])) {
             if ((int)$chk->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE employees ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0");
             }
-        } catch (Throwable $_) { /* best-effort */ }
+        } catch (Throwable $_) { /* best-effort */
+        }
 
-        // Archive using roles table (role_id 2=RESEARCH_ADVISER only)
-        $stmt = $conn->prepare("UPDATE employees SET is_archived = 1 WHERE employee_id = :id AND EXISTS (SELECT 1 FROM roles r WHERE r.employee_id = employees.employee_id AND r.role_id = 2)");
+        // Archive using role (role_id 2=RESEARCH_ADVISER only)
+        // Detect if role_id exists for safer check
+        $hasRoleID = false;
+        try {
+            $c = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role_id'");
+            $c->execute();
+            $hasRoleID = ((int)$c->fetchColumn() > 0);
+        } catch (Throwable $_) {
+        }
+
+        if ($hasRoleID) {
+            $stmt = $conn->prepare("UPDATE employees SET is_archived = 1 WHERE employee_id = :id AND role_id = 2");
+        } else {
+            $stmt = $conn->prepare("UPDATE employees SET is_archived = 1 WHERE employee_id = :id AND EXISTS (SELECT 1 FROM roles r WHERE r.employee_id = employees.employee_id AND r.role_id = 2)");
+        }
         $stmt->execute([':id' => $subadmin_id]);
         if ($stmt->rowCount() > 0) {
             $_SESSION['success'] = "Sub-admin archived successfully.";
@@ -85,12 +99,16 @@ try {
     $colRole = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role'");
     $colRole->execute();
     $hasRoleCol = ((int)$colRole->fetchColumn() > 0);
-} catch (Throwable $_) { $hasRoleCol = false; }
+} catch (Throwable $_) {
+    $hasRoleCol = false;
+}
 try {
     $colEmpType = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'employee_type'");
     $colEmpType->execute();
     $hasEmpTypeCol = ((int)$colEmpType->fetchColumn() > 0);
-} catch (Throwable $_) { $hasEmpTypeCol = false; }
+} catch (Throwable $_) {
+    $hasEmpTypeCol = false;
+}
 $roleCol = $hasRoleCol ? 'role' : 'employee_type';
 
 $strandSelect = $hasDepartmentIdCol
@@ -104,35 +122,74 @@ try {
     $qCols = $conn->prepare("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'");
     $qCols->execute();
     $cols = $qCols->fetchAll(PDO::FETCH_COLUMN, 0);
-    if (in_array('first_name', $cols, true)) { $firstCol = 'first_name'; }
-    elseif (in_array('firstname', $cols, true)) { $firstCol = 'firstname'; }
-    if (in_array('middle_name', $cols, true)) { $middleCol = 'middle_name'; }
-    elseif (in_array('middlename', $cols, true)) { $middleCol = 'middlename'; }
-    if (in_array('last_name', $cols, true)) { $lastCol = 'last_name'; }
-    elseif (in_array('lastname', $cols, true)) { $lastCol = 'lastname'; }
-} catch (Throwable $_) { /* leave nulls */ }
+    if (in_array('first_name', $cols, true)) {
+        $firstCol = 'first_name';
+    } elseif (in_array('firstname', $cols, true)) {
+        $firstCol = 'firstname';
+    }
+    if (in_array('middle_name', $cols, true)) {
+        $middleCol = 'middle_name';
+    } elseif (in_array('middlename', $cols, true)) {
+        $middleCol = 'middlename';
+    }
+    if (in_array('last_name', $cols, true)) {
+        $lastCol = 'last_name';
+    } elseif (in_array('lastname', $cols, true)) {
+        $lastCol = 'lastname';
+    }
+} catch (Throwable $_) { /* leave nulls */
+}
 $nameParts = [];
-if ($firstCol) { $nameParts[] = "e.`$firstCol`"; }
-if ($middleCol) { $nameParts[] = "NULLIF(e.`$middleCol`,'')"; }
-if ($lastCol) { $nameParts[] = "e.`$lastCol`"; }
+if ($firstCol) {
+    $nameParts[] = "e.`$firstCol`";
+}
+if ($middleCol) {
+    $nameParts[] = "NULLIF(e.`$middleCol`,'')";
+}
+if ($lastCol) {
+    $nameParts[] = "e.`$lastCol`";
+}
 $nameExpr = !empty($nameParts) ? ("CONCAT_WS(' ', " . implode(', ', $nameParts) . ")") : "e.email";
 
 $createdAtSelect = $hasCreatedAtCol ? "e.created_at" : "NULL AS created_at";
 $orderBy = $hasCreatedAtCol ? "e.created_at DESC" : "e.employee_id DESC";
 
-// Fetch active (non-archived) sub-admins using roles table (role_id 2=RESEARCH_ADVISER only, not Deans)
-$sql = "SELECT 
-    e.employee_id AS id,
-    {$nameExpr} AS fullname,
-    e.email,
-    {$strandSelect},
-    {$createdAtSelect},
-    {$profilePicSelect}
-  FROM employees e
-  INNER JOIN roles r ON e.employee_id = r.employee_id
-  " . ($hasDepartmentIdCol ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
-  WHERE r.role_id = 2 AND " . ($hasIsArchivedCol ? "COALESCE(e.is_archived,0) = 0" : "1=1") . "
-  ORDER BY {$orderBy}";
+// Detect if we have role_id in employees
+try {
+    $cId = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role_id'");
+    $cId->execute();
+    $hasRoleIDInEmployees = ((int)$cId->fetchColumn() > 0);
+} catch (Throwable $_) {
+    $hasRoleIDInEmployees = false;
+}
+
+// Fetch active (non-archived) sub-admins (Research Advisers)
+if ($hasRoleIDInEmployees) {
+    $sql = "SELECT 
+        e.employee_id AS id,
+        {$nameExpr} AS fullname,
+        e.email,
+        {$strandSelect},
+        {$createdAtSelect},
+        {$profilePicSelect}
+      FROM employees e
+      " . ($hasDepartmentIdCol ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
+      WHERE e.role_id = 2 AND " . ($hasIsArchivedCol ? "COALESCE(e.is_archived,0) = 0" : "1=1") . "
+      ORDER BY {$orderBy}";
+} else {
+    $sql = "SELECT 
+        e.employee_id AS id,
+        {$nameExpr} AS fullname,
+        e.email,
+        {$strandSelect},
+        {$createdAtSelect},
+        {$profilePicSelect}
+      FROM employees e
+      INNER JOIN roles r ON e.employee_id = r.employee_id
+      " . ($hasDepartmentIdCol ? "LEFT JOIN departments d ON d.department_id = e.department_id" : "") . "
+      WHERE r.role_id = 2 AND " . ($hasIsArchivedCol ? "COALESCE(e.is_archived,0) = 0" : "1=1") . "
+      ORDER BY {$orderBy}";
+}
 $stmt = $conn->prepare($sql);
 $stmt->execute();
 $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -140,6 +197,7 @@ $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -148,6 +206,7 @@ $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
+
 <body class="bg-gray-100 flex">
 
     <!-- Sidebar -->
@@ -167,7 +226,7 @@ $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </a>
                 </div>
             </div>
-            
+
             <!-- Success/Error Messages (SweetAlert2) -->
             <?php if (isset($_SESSION['success'])): ?>
                 <script>
@@ -198,7 +257,7 @@ $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </script>
                 <?php unset($_SESSION['error']); ?>
             <?php endif; ?>
-            
+
             <!-- Sub-Admins Mobile Cards (visible on small screens) -->
             <div class="grid grid-cols-1 sm:hidden gap-4">
                 <?php if (empty($subadmins)): ?>
@@ -274,8 +333,8 @@ $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <a href="edit_subadmin.php?id=<?php echo $subadmin['id']; ?>" class="text-blue-600 hover:text-blue-900 mr-3">
                                             <i class="fas fa-edit"></i> Edit
                                         </a>
-                                        <a href="manage_subadmins.php?archive=<?php echo $subadmin['id']; ?>" 
-                                           class="sa-archive-link text-amber-600 hover:text-amber-800">
+                                        <a href="manage_subadmins.php?archive=<?php echo $subadmin['id']; ?>"
+                                            class="sa-archive-link text-amber-600 hover:text-amber-800">
                                             <i class="fas fa-archive"></i> Archive
                                         </a>
                                     </td>
@@ -289,31 +348,32 @@ $subadmins = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </main>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function(){
-        const attachSwalArchive = (el) => {
-            el.addEventListener('click', function(e){
-                const href = this.getAttribute('href');
-                if (typeof Swal === 'undefined') return; // fallback
-                e.preventDefault();
-                Swal.fire({
-                    title: 'Archive this sub-admin?',
-                    text: 'This will hide the account from active list. You can restore it later.',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#d97706',
-                    cancelButtonColor: '#3085d6',
-                    confirmButtonText: 'Yes, archive',
-                    cancelButtonText: 'Cancel'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        window.location.href = href;
-                    }
+        document.addEventListener('DOMContentLoaded', function() {
+            const attachSwalArchive = (el) => {
+                el.addEventListener('click', function(e) {
+                    const href = this.getAttribute('href');
+                    if (typeof Swal === 'undefined') return; // fallback
+                    e.preventDefault();
+                    Swal.fire({
+                        title: 'Archive this sub-admin?',
+                        text: 'This will hide the account from active list. You can restore it later.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#d97706',
+                        cancelButtonColor: '#3085d6',
+                        confirmButtonText: 'Yes, archive',
+                        cancelButtonText: 'Cancel'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.location.href = href;
+                        }
+                    });
                 });
-            });
-        };
-        document.querySelectorAll('.sa-archive-link').forEach(attachSwalArchive);
-    });
+            };
+            document.querySelectorAll('.sa-archive-link').forEach(attachSwalArchive);
+        });
     </script>
 
 </body>
+
 </html>

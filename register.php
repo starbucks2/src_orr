@@ -4,7 +4,8 @@ include 'db.php'; // Ensure this file initializes $conn
 
 // Minimal env helper for reCAPTCHA keys
 if (!function_exists('get_env_var')) {
-    function get_env_var($key, $default = '') {
+    function get_env_var($key, $default = '')
+    {
         $val = getenv($key);
         if ($val !== false && $val !== null && $val !== '') return $val;
         static $env = null;
@@ -53,10 +54,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $capturedImage = $_POST['captured_image'] ?? '';
     $profilePicName = '';
     $targetDir = 'images/';
-    if (!is_dir($targetDir)) { @mkdir($targetDir, 0777, true); }
+    if (!is_dir($targetDir)) {
+        @mkdir($targetDir, 0777, true);
+    }
 
     // Helper: store old values except password and file
-    function store_old($firstname, $middlename, $lastname, $suffix, $email, $student_id, $department='', $course_strand='') {
+    function store_old($firstname, $middlename, $lastname, $suffix, $email, $student_id, $department = '', $course_strand = '')
+    {
         $_SESSION['old'] = [
             'firstname' => $firstname,
             'middlename' => $middlename,
@@ -76,13 +80,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    
+
     // Validate department from DB
     try {
-        $deptStmt = $conn->prepare("SELECT department_id, name, code, is_active FROM departments WHERE name = ? LIMIT 1");
+        $deptStmt = $conn->prepare("SELECT department_id, department_name, code, is_active FROM departments WHERE department_name = ? LIMIT 1");
         $deptStmt->execute([$department]);
         $deptRow = $deptStmt->fetch(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $deptRow = false; }
+    } catch (Exception $e) {
+        $deptRow = false;
+    }
     if (!$deptRow || (int)$deptRow['is_active'] !== 1) {
         $_SESSION['error'] = "Invalid department selected.";
         store_old($firstname, $middlename, $lastname, $suffix, $email, $student_id, $department, $course_strand);
@@ -90,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     // Validate course/strand based on department from DB
-    $isSHS = (strtolower($deptRow['name']) === 'senior high school' || strtolower((string)$deptRow['code']) === 'shs');
+    $isSHS = (strtolower($deptRow['department_name']) === 'senior high school' || strtolower((string)$deptRow['code']) === 'shs');
     if ($isSHS) {
         try {
             // strands by name
@@ -164,7 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int)$colCheckDept->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE students ADD COLUMN department VARCHAR(50) NULL AFTER email");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
         // Ensure students.student_id exists (main column for student identification)
         try {
             $colCheckSID = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'student_id'");
@@ -176,11 +183,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dtypeStmt = $conn->prepare("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'student_id'");
                 $dtypeStmt->execute();
                 $dtype = strtolower((string)$dtypeStmt->fetchColumn());
-                if (in_array($dtype, ['int','integer','tinyint','smallint','mediumint','bigint','decimal','double','float'])) {
+                if (in_array($dtype, ['int', 'integer', 'tinyint', 'smallint', 'mediumint', 'bigint', 'decimal', 'double', 'float'])) {
                     $conn->exec("ALTER TABLE students MODIFY COLUMN student_id VARCHAR(32) NULL");
                 }
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
 
         // Ensure optional name columns exist
         try {
@@ -189,14 +197,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int)$colChkMid->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE students ADD COLUMN middlename VARCHAR(100) NULL AFTER firstname");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
         try {
             $colChkSuf = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'suffix'");
             $colChkSuf->execute();
             if ((int)$colChkSuf->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE students ADD COLUMN suffix VARCHAR(50) NULL AFTER lastname");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
 
         // Ensure auth/media/status columns exist
         try {
@@ -207,17 +217,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $afterCol = 'student_id';
                 $existsStudentId = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'student_id'");
                 $existsStudentId->execute();
-                if ((int)$existsStudentId->fetchColumn() === 0) { $afterCol = 'email'; }
-                $conn->exec("ALTER TABLE students ADD COLUMN password VARCHAR(255) NOT NULL AFTER `".$afterCol."`");
+                if ((int)$existsStudentId->fetchColumn() === 0) {
+                    $afterCol = 'email';
+                }
+                $conn->exec("ALTER TABLE students ADD COLUMN password VARCHAR(255) NOT NULL AFTER `" . $afterCol . "`");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
         try {
             $colChkPic = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'profile_pic'");
             $colChkPic->execute();
             if ((int)$colChkPic->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE students ADD COLUMN profile_pic VARCHAR(255) NULL AFTER password");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
 
         // Ensure rfid_number, if present, is NULL-able (not empty-string default) to avoid duplicate '' unique constraint errors
         try {
@@ -229,16 +243,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Normalize existing empty strings to NULL so unique index won't collide
                 $conn->exec("UPDATE students SET rfid_number = NULL WHERE rfid_number = ''");
                 // Ensure a unique index exists (allowing multiple NULLs)
-                try { $conn->exec("ALTER TABLE students ADD UNIQUE KEY uniq_rfid_number (rfid_number)"); } catch (Throwable $_) { /* might already exist */ }
+                try {
+                    $conn->exec("ALTER TABLE students ADD UNIQUE KEY uniq_rfid_number (rfid_number)");
+                } catch (Throwable $_) { /* might already exist */
+                }
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
         try {
             $colChkVer = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students' AND COLUMN_NAME = 'is_verified'");
             $colChkVer->execute();
             if ((int)$colChkVer->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE students ADD COLUMN is_verified TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_pic");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
 
         // Ensure students.course_strand column exists
         try {
@@ -247,7 +266,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int)$colCheckCourse->fetchColumn() === 0) {
                 $conn->exec("ALTER TABLE students ADD COLUMN course_strand VARCHAR(50) NULL AFTER department");
             }
-        } catch (Exception $e) { /* ignore */ }
+        } catch (Exception $e) { /* ignore */
+        }
 
         $stmt = $conn->prepare("SELECT * FROM students WHERE email = ? OR student_id = ?");
         $stmt->execute([$email, $student_id]);
@@ -309,17 +329,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $insertCols = [];
         $insertVals = [];
-        if ($colFirst)  { $insertCols[] = $colFirst;  $insertVals[] = $firstname; }
-        if ($colMiddle) { $insertCols[] = $colMiddle; $insertVals[] = $middlename; }
-        if ($colLast)   { $insertCols[] = $colLast;   $insertVals[] = $lastname; }
-        if ($colSuffix) { $insertCols[] = $colSuffix; $insertVals[] = $suffix; }
-        $insertCols[] = 'email';         $insertVals[] = $email;
-        $insertCols[] = 'department';    $insertVals[] = $department;
-        $insertCols[] = 'course_strand'; $insertVals[] = $course_strand;
-        $insertCols[] = 'student_id';    $insertVals[] = $student_id;
-        $insertCols[] = 'password';      $insertVals[] = $hashed_password;
-        $insertCols[] = 'profile_pic';   $insertVals[] = $profilePicName;
-        $insertCols[] = 'is_verified';   $insertVals[] = 0;
+        if ($colFirst) {
+            $insertCols[] = $colFirst;
+            $insertVals[] = $firstname;
+        }
+        if ($colMiddle) {
+            $insertCols[] = $colMiddle;
+            $insertVals[] = $middlename;
+        }
+        if ($colLast) {
+            $insertCols[] = $colLast;
+            $insertVals[] = $lastname;
+        }
+        if ($colSuffix) {
+            $insertCols[] = $colSuffix;
+            $insertVals[] = $suffix;
+        }
+        $insertCols[] = 'email';
+        $insertVals[] = $email;
+        $insertCols[] = 'department';
+        $insertVals[] = $department;
+        $insertCols[] = 'course_strand';
+        $insertVals[] = $course_strand;
+        $insertCols[] = 'student_id';
+        $insertVals[] = $student_id;
+        $insertCols[] = 'password';
+        $insertVals[] = $hashed_password;
+        $insertCols[] = 'profile_pic';
+        $insertVals[] = $profilePicName;
+        $insertCols[] = 'is_verified';
+        $insertVals[] = 0;
 
         // If rfid_number column exists, set it to NULL explicitly when not provided by form
         if (in_array('rfid_number', $studentCols, true)) {
@@ -347,6 +386,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -354,7 +394,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
+
     <style>
         body {
             /* Apply a subtle overlay so the background is ~70% visible */
@@ -364,29 +404,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background-repeat: no-repeat;
             background-attachment: fixed;
         }
+
         /* Hide built-in password reveal button (Edge/IE) so only our custom eye toggles appear */
         input[type="password"]::-ms-reveal,
         input[type="password"]::-ms-clear {
             display: none;
         }
+
         .glass {
-            background: rgba(255,255,255,0.6);
-            box-shadow: 0 8px 32px 0 rgba(31,38,135,0.37);
+            background: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border-radius: 1.5rem;
-            border: 1px solid rgba(255,255,255,0.18);
+            border: 1px solid rgba(255, 255, 255, 0.18);
             animation: fadeIn 1s ease;
             /* Ensure reCAPTCHA challenge is not clipped on mobile */
             overflow: visible;
         }
+
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
         .custom-file-input::-webkit-file-upload-button {
             visibility: hidden;
         }
+
         .custom-file-input::before {
             content: 'Choose Image';
             display: inline-block;
@@ -400,19 +452,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 0.95rem;
             margin-right: 1rem;
         }
+
         .custom-file-input:hover::before {
             background: #2563eb;
         }
+
         .custom-file-input:active::before {
             background: #1d4ed8;
         }
+
         /* Raise z-index for reCAPTCHA widget and any bubbles/challenge */
-        #recaptcha-holder, .g-recaptcha, .grecaptcha-badge, div[style*="z-index: 2000000000"] {
+        #recaptcha-holder,
+        .g-recaptcha,
+        .grecaptcha-badge,
+        div[style*="z-index: 2000000000"] {
             position: relative;
             z-index: 10000;
         }
     </style>
 </head>
+
 <body class="flex items-center justify-center min-h-screen">
     <div class="glass p-4 sm:p-8 md:p-10 w-full max-w-lg mx-2 sm:mx-auto shadow-2xl">
         <div class="flex flex-col items-center mb-4 sm:mb-6">
@@ -440,11 +499,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     confirmButtonColor: '#ef4444'
                 });
             </script>
-            <?php unset($_SESSION['error']); unset($_SESSION['old']); ?>
+            <?php unset($_SESSION['error']);
+            unset($_SESSION['old']); ?>
         <?php endif; ?>
 
-    <?php $old = isset($_SESSION['old']) ? $_SESSION['old'] : []; ?>
-    <form action="register.php" method="POST" enctype="multipart/form-data" class="space-y-4 sm:space-y-5">
+        <?php $old = isset($_SESSION['old']) ? $_SESSION['old'] : []; ?>
+        <form action="register.php" method="POST" enctype="multipart/form-data" class="space-y-4 sm:space-y-5">
             <!-- Profile Picture -->
             <div class="mb-2">
                 <label for="profile_pic" class="block text-sm font-semibold text-gray-800">Profile Picture</label>
@@ -559,7 +619,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="text" name="lrn" id="lrn" inputmode="numeric" placeholder="YY-XXXXXXX" class="mt-1 block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition" required oninput="validateLRN(this)" value="<?php echo isset($old['student_id']) ? htmlspecialchars($old['student_id']) : ''; ?>">
                 <span id="lrn-error" class="text-xs text-red-600 mt-1 block"></span>
             </div>
-           
+
             <!-- Password -->
             <div>
                 <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password <span class="text-red-500">*</span></label>
@@ -590,7 +650,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <p id="confirm-password-match" class="text-xs text-center mt-1"></p>
 
-            
+
 
             <!-- Register Button -->
             <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 sm:py-3 px-4 rounded-md font-semibold text-base sm:text-lg shadow-md transition duration-200 flex items-center justify-center gap-2">
@@ -600,7 +660,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="mt-4 sm:mt-6 text-center text-xs sm:text-sm text-gray-600">
             Have an account? <a href="login.php" class="text-blue-600 hover:text-blue-800 font-medium">Login here</a>.
         </p>
-      
+
         <!-- Back to homepage -->
         <div class="mt-6 sm:mt-8 flex justify-center">
             <a href="index.php" class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-gray-300 text-gray-700 bg-white/80 backdrop-blur hover:bg-white shadow-sm hover:shadow-md transform hover:-translate-y-0.5 transition-all duration-200 text-xs sm:text-sm">
@@ -640,7 +700,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Senior High School: 12 digits LRN, no formatting
                 digits = digits.slice(0, 12);
                 input.value = digits;
-                
+
                 if (digits.length === 0) {
                     error.textContent = '';
                 } else if (digits.length < 12) {
@@ -656,7 +716,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     formatted = digits.slice(0, 2) + '-' + digits.slice(2, 9);
                 }
                 input.value = formatted;
-                
+
                 if (formatted.length === 0) {
                     error.textContent = '';
                 } else if (!/^\d{2}-\d{7}$/.test(formatted)) {
@@ -676,7 +736,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const passwordInput = document.getElementById('password');
         if (toggleBtn && passwordInput) {
             const eyeIcon = toggleBtn.querySelector('i');
-            toggleBtn.addEventListener('click', function () {
+            toggleBtn.addEventListener('click', function() {
                 const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
                 passwordInput.setAttribute('type', type);
                 if (eyeIcon) {
@@ -691,7 +751,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const confirmPasswordInput = document.getElementById('confirm_password');
         if (toggleConfirmBtn && confirmPasswordInput) {
             const confirmEyeIcon = toggleConfirmBtn.querySelector('i');
-            toggleConfirmBtn.addEventListener('click', function () {
+            toggleConfirmBtn.addEventListener('click', function() {
                 const type = confirmPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
                 confirmPasswordInput.setAttribute('type', type);
                 if (confirmEyeIcon) {
@@ -703,6 +763,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Password match check
         const matchMsg = document.getElementById('confirm-password-match');
+
         function checkPasswordMatch() {
             if (!confirmPasswordInput.value) {
                 matchMsg.textContent = '';
@@ -719,265 +780,311 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (passwordInput) passwordInput.addEventListener('input', checkPasswordMatch);
         if (confirmPasswordInput) confirmPasswordInput.addEventListener('input', checkPasswordMatch);
-    // Profile picture preview
-    function previewProfilePic(event) {
-        try {
-            const input = event.target;
-            const preview = document.getElementById('profile-pic-preview');
-            const nameEl = document.getElementById('profile-pic-name');
-            const capturedInput = document.getElementById('captured_image');
-            if (capturedInput) capturedInput.value = '';
+        // Profile picture preview
+        function previewProfilePic(event) {
+            try {
+                const input = event.target;
+                const preview = document.getElementById('profile-pic-preview');
+                const nameEl = document.getElementById('profile-pic-name');
+                const capturedInput = document.getElementById('captured_image');
+                if (capturedInput) capturedInput.value = '';
 
-            if (input.files && input.files[0]) {
-                const file = input.files[0];
-                // Prefer fast preview via object URL
-                if (window.URL && URL.createObjectURL) {
-                    const objUrl = URL.createObjectURL(file);
-                    preview.src = objUrl;
-                    preview.onload = () => { try { URL.revokeObjectURL(objUrl); } catch(_){} };
-                    preview.classList.remove('hidden');
-                } else {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        preview.src = e.target.result;
+                if (input.files && input.files[0]) {
+                    const file = input.files[0];
+                    // Prefer fast preview via object URL
+                    if (window.URL && URL.createObjectURL) {
+                        const objUrl = URL.createObjectURL(file);
+                        preview.src = objUrl;
+                        preview.onload = () => {
+                            try {
+                                URL.revokeObjectURL(objUrl);
+                            } catch (_) {}
+                        };
                         preview.classList.remove('hidden');
-                    };
-                    reader.readAsDataURL(file);
+                    } else {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            preview.src = e.target.result;
+                            preview.classList.remove('hidden');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                    if (nameEl) nameEl.textContent = file.name || '';
+                } else {
+                    preview.src = '';
+                    preview.classList.add('hidden');
+                    if (nameEl) nameEl.textContent = '';
                 }
-                if (nameEl) nameEl.textContent = file.name || '';
-            } else {
-                preview.src = '';
-                preview.classList.add('hidden');
-                if (nameEl) nameEl.textContent = '';
+            } catch (err) {
+                console.error('Preview error:', err);
             }
-        } catch (err) {
-            console.error('Preview error:', err);
-        }
-    }
-
-
-    // Password strength checker
-    const strengthBar = document.getElementById('password-strength-bar');
-    const strengthText = document.getElementById('password-strength-text');
-
-    passwordInput.addEventListener('input', function() {
-        const password = passwordInput.value;
-        let score = 0;
-        if (password.length >= 8) score++;
-        if (/[A-Z]/.test(password)) score++;
-        if (/[a-z]/.test(password)) score++;
-        if (/[0-9]/.test(password)) score++;
-        if (/[^A-Za-z0-9]/.test(password)) score++;
-
-        let strength = {
-            width: '0%',
-            color: '',
-            text: ''
-        };
-
-        switch (score) {
-            case 0:
-            case 1:
-                strength = { width: '20%', color: 'bg-red-500', text: 'Very Weak' };
-                break;
-            case 2:
-                strength = { width: '40%', color: 'bg-orange-500', text: 'Weak' };
-                break;
-            case 3:
-                strength = { width: '60%', color: 'bg-yellow-500', text: 'Medium' };
-                break;
-            case 4:
-                strength = { width: '80%', color: 'bg-blue-500', text: 'Strong' };
-                break;
-            case 5:
-                strength = { width: '100%', color: 'bg-green-500', text: 'Very Strong' };
-                break;
         }
 
-        if (password.length === 0) {
-            strength = { width: '0%', color: '', text: '' };
-        }
 
-        strengthBar.style.width = strength.width;
-        strengthBar.className = `h-full rounded-full transition-all ${strength.color}`;
-        strengthText.textContent = strength.text;
-    });
+        // Password strength checker
+        const strengthBar = document.getElementById('password-strength-bar');
+        const strengthText = document.getElementById('password-strength-text');
 
-    // Camera controls
-    let mediaStream = null;
-    const cameraArea = document.getElementById('camera-area');
-    const video = document.getElementById('camera-video');
-    const canvas = document.getElementById('camera-canvas');
-    const capturedInput = document.getElementById('captured_image');
+        passwordInput.addEventListener('input', function() {
+            const password = passwordInput.value;
+            let score = 0;
+            if (password.length >= 8) score++;
+            if (/[A-Z]/.test(password)) score++;
+            if (/[a-z]/.test(password)) score++;
+            if (/[0-9]/.test(password)) score++;
+            if (/[^A-Za-z0-9]/.test(password)) score++;
 
-    async function openCamera() {
-        try {
-            cameraArea.classList.remove('hidden');
-            mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-            video.srcObject = mediaStream;
-        } catch (err) {
-            Swal && Swal.fire({ icon: 'error', title: 'Camera Error', text: 'Cannot access camera: ' + err.message });
-        }
-    }
-    function closeCamera() {
-        cameraArea.classList.add('hidden');
-        if (mediaStream) {
-            mediaStream.getTracks().forEach(t => t.stop());
-            mediaStream = null;
-        }
-    }
-    function capturePhoto() {
-        const w = video.videoWidth || 480;
-        const h = video.videoHeight || 480;
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/png');
-        capturedInput.value = dataUrl;
-        // Show preview
-        const preview = document.getElementById('profile-pic-preview');
-        preview.src = dataUrl;
-        preview.classList.remove('hidden');
-        const nameEl = document.getElementById('profile-pic-name');
-        if (nameEl) nameEl.textContent = 'Captured image';
-        // Clear file input to prefer captured image
-        const fileInput = document.getElementById('profile_pic');
-        if (fileInput) fileInput.value = '';
-        closeCamera();
-    }
-    window.openCamera = openCamera;
-    window.closeCamera = closeCamera;
-    window.capturePhoto = capturePhoto;
+            let strength = {
+                width: '0%',
+                color: '',
+                text: ''
+            };
 
-    // Picture mode toggle (Upload vs Camera)
-    (function setupPictureModeToggle(){
-        const modeSel = document.getElementById('picMode');
-        const uploadControls = document.getElementById('uploadControls');
-        const cameraControls = document.getElementById('cameraControls');
+            switch (score) {
+                case 0:
+                case 1:
+                    strength = {
+                        width: '20%',
+                        color: 'bg-red-500',
+                        text: 'Very Weak'
+                    };
+                    break;
+                case 2:
+                    strength = {
+                        width: '40%',
+                        color: 'bg-orange-500',
+                        text: 'Weak'
+                    };
+                    break;
+                case 3:
+                    strength = {
+                        width: '60%',
+                        color: 'bg-yellow-500',
+                        text: 'Medium'
+                    };
+                    break;
+                case 4:
+                    strength = {
+                        width: '80%',
+                        color: 'bg-blue-500',
+                        text: 'Strong'
+                    };
+                    break;
+                case 5:
+                    strength = {
+                        width: '100%',
+                        color: 'bg-green-500',
+                        text: 'Very Strong'
+                    };
+                    break;
+            }
+
+            if (password.length === 0) {
+                strength = {
+                    width: '0%',
+                    color: '',
+                    text: ''
+                };
+            }
+
+            strengthBar.style.width = strength.width;
+            strengthBar.className = `h-full rounded-full transition-all ${strength.color}`;
+            strengthText.textContent = strength.text;
+        });
+
+        // Camera controls
+        let mediaStream = null;
         const cameraArea = document.getElementById('camera-area');
-        const fileInput = document.getElementById('profile_pic');
-        const nameEl = document.getElementById('profile-pic-name');
-        const preview = document.getElementById('profile-pic-preview');
+        const video = document.getElementById('camera-video');
+        const canvas = document.getElementById('camera-canvas');
         const capturedInput = document.getElementById('captured_image');
 
-        function applyPicMode(){
-            const mode = (modeSel && modeSel.value) || 'upload';
-            if (mode === 'upload') {
-                // Show file upload, hide camera UI
-                if (uploadControls) uploadControls.classList.remove('hidden');
-                if (cameraControls) cameraControls.classList.add('hidden');
-                if (cameraArea) cameraArea.classList.add('hidden');
-                closeCamera();
-                // Clear captured data when returning to upload mode
-                if (capturedInput) capturedInput.value = '';
-            } else {
-                // Show camera button, hide file input
-                if (uploadControls) uploadControls.classList.add('hidden');
-                if (cameraControls) cameraControls.classList.remove('hidden');
-                // Clear file input filename and value to avoid confusion
-                if (fileInput) fileInput.value = '';
-                if (nameEl && nameEl.textContent && nameEl.textContent !== 'Captured image') nameEl.textContent = '';
-                // Do not auto-open the camera; user will click the button
+        async function openCamera() {
+            try {
+                cameraArea.classList.remove('hidden');
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+                video.srcObject = mediaStream;
+            } catch (err) {
+                Swal && Swal.fire({
+                    icon: 'error',
+                    title: 'Camera Error',
+                    text: 'Cannot access camera: ' + err.message
+                });
             }
         }
 
-        if (modeSel) {
-            modeSel.addEventListener('change', applyPicMode);
-            // Initialize state
-            applyPicMode();
-        }
-    })();
-
-    // Dynamic Course/Strand Selection based on Department (DB-backed)
-    (async function setupDynamicSelections() {
-        const deptSel = document.getElementById('department');
-        const csContainer = document.getElementById('course-strand-container');
-        const csSel = document.getElementById('course_strand');
-        const csLabel = document.getElementById('course-strand-label');
-        const studentIdLabel = document.getElementById('student-id-label');
-        const oldDept = <?php echo json_encode($old['department'] ?? ''); ?>;
-        const oldCS = <?php echo json_encode($old['course_strand'] ?? ''); ?>;
-
-        async function loadDepartments() {
-            try {
-                const res = await fetch('include/get_departments.php');
-                const json = await res.json();
-                if (!json.ok) throw new Error(json.error || 'Failed to load departments');
-                const keep = deptSel.value;
-                deptSel.innerHTML = '<option value="">Select Department</option>';
-                json.data.forEach(d => {
-                    const opt = document.createElement('option');
-                    opt.value = d.name;
-                    opt.textContent = d.name;
-                    opt.dataset.deptId = d.id;
-                    if ((oldDept && d.name === oldDept) || (!oldDept && keep && d.name === keep)) opt.selected = true;
-                    deptSel.appendChild(opt);
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        async function loadStrands() {
-            try {
-                const res = await fetch('include/get_strands.php');
-                const json = await res.json();
-                if (!json.ok) throw new Error(json.error || 'Failed to load strands');
-                csSel.innerHTML = '<option value="">Select Strand</option>';
-                json.data.forEach(s => {
-                    const opt = document.createElement('option');
-                    opt.value = s.strand;
-                    opt.textContent = s.strand;
-                    if (oldCS && s.strand === oldCS) opt.selected = true;
-                    csSel.appendChild(opt);
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        async function loadCoursesForDepartmentId(deptId) {
-            try {
-                const res = await fetch('include/get_courses.php?department_id=' + encodeURIComponent(deptId));
-                const json = await res.json();
-                if (!json.ok) throw new Error(json.error || 'Failed to load courses');
-                csSel.innerHTML = '<option value="">Select Course</option>';
-                json.data.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.name;
-                    opt.textContent = c.name + (c.code ? ` (${c.code})` : '');
-                    if (oldCS && c.name === oldCS) opt.selected = true;
-                    csSel.appendChild(opt);
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        async function onDepartmentChange() {
-            const opt = deptSel.options[deptSel.selectedIndex];
-            const deptId = opt ? opt.dataset.deptId : '';
-            const deptName = opt ? opt.value : '';
-            if (!deptId) {
-                csContainer.style.display = 'none';
-                csSel.required = false;
-                csSel.innerHTML = '<option value="">Select Course/Strand</option>';
-                if (studentIdLabel) studentIdLabel.textContent = 'Student ID';
-                return;
+        function closeCamera() {
+            cameraArea.classList.add('hidden');
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
             }
-            csContainer.style.display = '';
-            csSel.required = true;
-            if (deptName.toLowerCase() === 'senior high school') {
-                csLabel.textContent = 'Strand';
-                if (studentIdLabel) studentIdLabel.textContent = 'LRN NO.';
-                await loadStrands();
-            } else {
-                csLabel.textContent = 'Course';
-                if (studentIdLabel) studentIdLabel.textContent = 'Student ID';
-                await loadCoursesForDepartmentId(deptId);
-            }
-            // Reset oldCS after first render to avoid sticky selection on mode switch
         }
 
-        await loadDepartments();
-        await onDepartmentChange();
-        deptSel.addEventListener('change', onDepartmentChange);
-    })();
-</script>
+        function capturePhoto() {
+            const w = video.videoWidth || 480;
+            const h = video.videoHeight || 480;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/png');
+            capturedInput.value = dataUrl;
+            // Show preview
+            const preview = document.getElementById('profile-pic-preview');
+            preview.src = dataUrl;
+            preview.classList.remove('hidden');
+            const nameEl = document.getElementById('profile-pic-name');
+            if (nameEl) nameEl.textContent = 'Captured image';
+            // Clear file input to prefer captured image
+            const fileInput = document.getElementById('profile_pic');
+            if (fileInput) fileInput.value = '';
+            closeCamera();
+        }
+        window.openCamera = openCamera;
+        window.closeCamera = closeCamera;
+        window.capturePhoto = capturePhoto;
+
+        // Picture mode toggle (Upload vs Camera)
+        (function setupPictureModeToggle() {
+            const modeSel = document.getElementById('picMode');
+            const uploadControls = document.getElementById('uploadControls');
+            const cameraControls = document.getElementById('cameraControls');
+            const cameraArea = document.getElementById('camera-area');
+            const fileInput = document.getElementById('profile_pic');
+            const nameEl = document.getElementById('profile-pic-name');
+            const preview = document.getElementById('profile-pic-preview');
+            const capturedInput = document.getElementById('captured_image');
+
+            function applyPicMode() {
+                const mode = (modeSel && modeSel.value) || 'upload';
+                if (mode === 'upload') {
+                    // Show file upload, hide camera UI
+                    if (uploadControls) uploadControls.classList.remove('hidden');
+                    if (cameraControls) cameraControls.classList.add('hidden');
+                    if (cameraArea) cameraArea.classList.add('hidden');
+                    closeCamera();
+                    // Clear captured data when returning to upload mode
+                    if (capturedInput) capturedInput.value = '';
+                } else {
+                    // Show camera button, hide file input
+                    if (uploadControls) uploadControls.classList.add('hidden');
+                    if (cameraControls) cameraControls.classList.remove('hidden');
+                    // Clear file input filename and value to avoid confusion
+                    if (fileInput) fileInput.value = '';
+                    if (nameEl && nameEl.textContent && nameEl.textContent !== 'Captured image') nameEl.textContent = '';
+                    // Do not auto-open the camera; user will click the button
+                }
+            }
+
+            if (modeSel) {
+                modeSel.addEventListener('change', applyPicMode);
+                // Initialize state
+                applyPicMode();
+            }
+        })();
+
+        // Dynamic Course/Strand Selection based on Department (DB-backed)
+        (async function setupDynamicSelections() {
+            const deptSel = document.getElementById('department');
+            const csContainer = document.getElementById('course-strand-container');
+            const csSel = document.getElementById('course_strand');
+            const csLabel = document.getElementById('course-strand-label');
+            const studentIdLabel = document.getElementById('student-id-label');
+            const oldDept = <?php echo json_encode($old['department'] ?? ''); ?>;
+            const oldCS = <?php echo json_encode($old['course_strand'] ?? ''); ?>;
+
+            async function loadDepartments() {
+                try {
+                    const res = await fetch('include/get_departments.php');
+                    const json = await res.json();
+                    if (!json.ok) throw new Error(json.error || 'Failed to load departments');
+                    const keep = deptSel.value;
+                    deptSel.innerHTML = '<option value="">Select Department</option>';
+                    json.data.forEach(d => {
+                        const opt = document.createElement('option');
+                        opt.value = d.name;
+                        opt.textContent = d.name;
+                        opt.dataset.deptId = d.id;
+                        if ((oldDept && d.name === oldDept) || (!oldDept && keep && d.name === keep)) opt.selected = true;
+                        deptSel.appendChild(opt);
+                    });
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            async function loadStrands() {
+                try {
+                    const res = await fetch('include/get_strands.php');
+                    const json = await res.json();
+                    if (!json.ok) throw new Error(json.error || 'Failed to load strands');
+                    csSel.innerHTML = '<option value="">Select Strand</option>';
+                    json.data.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.strand;
+                        opt.textContent = s.strand;
+                        if (oldCS && s.strand === oldCS) opt.selected = true;
+                        csSel.appendChild(opt);
+                    });
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            async function loadCoursesForDepartmentId(deptId) {
+                try {
+                    const res = await fetch('include/get_courses.php?department_id=' + encodeURIComponent(deptId));
+                    const json = await res.json();
+                    if (!json.ok) throw new Error(json.error || 'Failed to load courses');
+                    csSel.innerHTML = '<option value="">Select Course</option>';
+                    json.data.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.name;
+                        opt.textContent = c.name + (c.code ? ` (${c.code})` : '');
+                        if (oldCS && c.name === oldCS) opt.selected = true;
+                        csSel.appendChild(opt);
+                    });
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            async function onDepartmentChange() {
+                const opt = deptSel.options[deptSel.selectedIndex];
+                const deptId = opt ? opt.dataset.deptId : '';
+                const deptName = opt ? opt.value : '';
+                if (!deptId) {
+                    csContainer.style.display = 'none';
+                    csSel.required = false;
+                    csSel.innerHTML = '<option value="">Select Course/Strand</option>';
+                    if (studentIdLabel) studentIdLabel.textContent = 'Student ID';
+                    return;
+                }
+                csContainer.style.display = '';
+                csSel.required = true;
+                if (deptName.toLowerCase() === 'senior high school') {
+                    csLabel.textContent = 'Strand';
+                    if (studentIdLabel) studentIdLabel.textContent = 'LRN NO.';
+                    await loadStrands();
+                } else {
+                    csLabel.textContent = 'Course';
+                    if (studentIdLabel) studentIdLabel.textContent = 'Student ID';
+                    await loadCoursesForDepartmentId(deptId);
+                }
+                // Reset oldCS after first render to avoid sticky selection on mode switch
+            }
+
+            await loadDepartments();
+            await onDepartmentChange();
+            deptSel.addEventListener('change', onDepartmentChange);
+        })();
+    </script>
 </body>
+
 </html>

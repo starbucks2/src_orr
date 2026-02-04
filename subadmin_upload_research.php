@@ -83,15 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Insert into database if no errors
         if (!$message) {
             try {
-                // Deduplicate title among approved books (case-insensitive)
-                $ck = $conn->prepare("SELECT book_id FROM books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1");
+                // Deduplicate title among approved cap_books (case-insensitive)
+                $ck = $conn->prepare("SELECT book_id FROM cap_books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1");
                 $ck->execute([$title]);
                 if ($ck->fetch()) {
                     throw new PDOException('A research with this title already exists in the repository. Please use a different title.');
                 }
-                // Insert into books; uploads by subadmin have no student_id
+                // Insert into cap_books; uploads by subadmin have no student_id
                 $adviser_id = $_SESSION['subadmin_id'] ?? null;
-                $stmt = $conn->prepare("INSERT INTO books 
+                $stmt = $conn->prepare("INSERT INTO cap_books 
                     (student_id, adviser_id, title, year, abstract, keywords, authors, department, status, image, document, submission_date) 
                     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
                 $stmt->execute([$adviser_id, $title, $year, $abstract, $keywords, $author, $department, $status, $image, $document]);
@@ -118,6 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -129,17 +130,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
         }
+
         .card-hover:hover {
             transform: translateY(-6px);
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         }
+
         .upload-card {
             border: 2px dashed #3b82f6;
         }
+
         .upload-card:hover {
             border-color: #1d4ed8;
             background-color: #eff6ff;
         }
+
         .section-header::after {
             content: '';
             position: absolute;
@@ -153,10 +158,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     </style>
 </head>
+
 <body class="bg-gray-50 min-h-screen flex">
 
     <!-- Include Sidebar -->
-   <?php include 'subadmin_sidebar.php'; ?>
+    <?php include 'subadmin_sidebar.php'; ?>
 
     <!-- Main Content -->
     <main class="flex-1 p-4 sm:p-6 lg:p-8 space-y-8">
@@ -170,8 +176,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <i class="fas fa-bell mr-3"></i>
                     <span><?= htmlspecialchars($message) ?></span>
                 </div>
-                <button onclick="document.getElementById('alert-message').remove()" 
-                        class="absolute top-0 right-0 m-2 text-gray-500 hover:text-gray-700">
+                <button onclick="document.getElementById('alert-message').remove()"
+                    class="absolute top-0 right-0 m-2 text-gray-500 hover:text-gray-700">
                     <i class="fas fa-times text-lg"></i>
                 </button>
             </div>
@@ -208,8 +214,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="fas fa-book"></i>
                             </div>
                             <input type="text" name="title" value="<?= htmlspecialchars($_POST['title'] ?? '') ?>"
-                                   class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                   placeholder="Enter research title" required>
+                                class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="Enter research title" required>
                         </div>
                     </div>
                     <div>
@@ -220,13 +226,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <select name="year" class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                 <?php
-                                    $currentYear = (int)date('Y');
-                                    for ($y = $currentYear; $y >= 2000; $y--) {
-                                        $next = $y + 1;
-                                        $sy = "S.Y. {$y}-{$next}";
-                                        $sel = (($_POST['year'] ?? '') === $sy) ? 'selected' : '';
-                                        echo '<option value="' . htmlspecialchars($sy, ENT_QUOTES) . '" ' . $sel . '>' . htmlspecialchars($sy) . '</option>';
-                                    }
+                                $currentYear = (int)date('Y');
+                                for ($y = $currentYear; $y >= 2000; $y--) {
+                                    $next = $y + 1;
+                                    $sy = "S.Y. {$y}-{$next}";
+                                    $sel = (($_POST['year'] ?? '') === $sy) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($sy, ENT_QUOTES) . '" ' . $sel . '>' . htmlspecialchars($sy) . '</option>';
+                                }
                                 ?>
                             </select>
                         </div>
@@ -237,16 +243,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Abstract *</label>
                     <textarea name="abstract" rows="4"
-                              class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="Enter a brief summary of your research..." required><?= htmlspecialchars($_POST['abstract'] ?? '') ?></textarea>
+                        class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter a brief summary of your research..." required><?= htmlspecialchars($_POST['abstract'] ?? '') ?></textarea>
                 </div>
 
                 <!-- Keywords -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Keywords (comma-separated)</label>
                     <input type="text" name="keywords" value="<?= htmlspecialchars($_POST['keywords'] ?? '') ?>"
-                           class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           placeholder="e.g., machine learning, climate change, data mining">
+                        class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., machine learning, climate change, data mining">
                     <p class="text-xs text-gray-500 mt-1">Add 3–8 keywords separated by commas to improve search visibility.</p>
                 </div>
 
@@ -254,8 +260,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Author(s) *</label>
                     <textarea name="author" rows="2"
-                              class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              placeholder="Enter author names separated by commas" required><?= htmlspecialchars($_POST['author'] ?? '') ?></textarea>
+                        class="w-full px-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter author names separated by commas" required><?= htmlspecialchars($_POST['author'] ?? '') ?></textarea>
                 </div>
 
                 <!-- Department & Status -->
@@ -296,7 +302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="fas fa-image"></i>
                             </div>
                             <input type="file" name="image" accept="image/*"
-                                   class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
+                                class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
                         </div>
                     </div>
                     <div>
@@ -306,7 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="fas fa-file-pdf"></i>
                             </div>
                             <input type="file" name="document" accept=".pdf"
-                                   class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
+                                class="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 transition-all duration-200">
                         </div>
                     </div>
                 </div>
@@ -320,4 +326,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </section>
     </main>
 </body>
+
 </html>

@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // Check for duplicate title (case-insensitive, approved research only)
     try {
-        $dup_check = $conn->prepare("SELECT book_id FROM books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1 LIMIT 1");
+        $dup_check = $conn->prepare("SELECT book_id FROM cap_books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1 LIMIT 1");
         $dup_check->execute([$title]);
         if ($dup_check->fetch()) {
             $_SESSION['error'] = "A research with this title already exists in the repository. Please use a different title.";
@@ -197,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // No legacy schema mutations; using new books table
 
     // Final duplicate check before insert
-    $final_dup = $conn->prepare("SELECT book_id FROM books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1 LIMIT 1");
+    $final_dup = $conn->prepare("SELECT book_id FROM cap_books WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND status = 1 LIMIT 1");
     $final_dup->execute([$title]);
     if ($final_dup->fetch()) {
         $_SESSION['error'] = "A research with this title already exists. Please use a different title.";
@@ -206,8 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     try {
-        // Insert into books table
-        $stmt = $conn->prepare("INSERT INTO books (student_id, title, year, abstract, keywords, authors, department, course_strand, document, image, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        // Insert into cap_books table
+        $stmt = $conn->prepare("INSERT INTO cap_books (student_id, title, year, abstract, keywords, authors, department, course_strand, document, image, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$student_id, $title, $year, $abstract, $keywords, $author, $department, $course_strand, $document, $image, $status]);
 
         // Activity log

@@ -35,7 +35,7 @@ if (isset($_POST['approve'])) {
     } else {
         $research_id = (int)$_POST['research_id'];
         // Approve and backfill department from student if missing
-        $approve_stmt = $conn->prepare("UPDATE books b 
+        $approve_stmt = $conn->prepare("UPDATE cap_books b 
             LEFT JOIN students s ON b.student_id = s.student_id 
             SET b.status = 1,
                 b.department = COALESCE(NULLIF(b.department, ''), s.department)
@@ -58,9 +58,11 @@ if (isset($_POST['archive'])) {
     // Prefer status-based archive (2 = Archived)
     $ok = false;
     try {
-        $archive_stmt = $conn->prepare("UPDATE books SET status = 2 WHERE book_id = ?");
+        $archive_stmt = $conn->prepare("UPDATE cap_books SET status = 2 WHERE book_id = ?");
         $ok = $archive_stmt->execute([$research_id]);
-    } catch (Throwable $e) { $ok = false; }
+    } catch (Throwable $e) {
+        $ok = false;
+    }
     if ($ok) {
         $_SESSION['success'] = "Research has been archived and removed from this list.";
     } else {
@@ -81,25 +83,24 @@ try {
     // Debug output - uncomment to see the data
     echo "<!-- Debug: Found " . count($pending_research) . " pending submissions -->";
     echo "<!-- SQL Query: " . $sql . " -->";
-    
+
     // Verify student uploads
     $verify_sql = "SELECT COUNT(*) FROM research_submission WHERE status = 0";
     $verify_stmt = $conn->prepare($verify_sql);
     $verify_stmt->execute();
     $total_pending = $verify_stmt->fetchColumn();
-    
+
     echo "<!-- Total pending in database: " . $total_pending . " -->";
-    
+
     if (empty($pending_research)) {
         // Check if there are any submissions at all
         $check_sql = "SELECT COUNT(*) FROM research_submission";
         $check_stmt = $conn->prepare($check_sql);
         $check_stmt->execute();
         $total_submissions = $check_stmt->fetchColumn();
-        
+
         echo "<!-- Total submissions in database: " . $total_submissions . " -->";
     }
-
 } catch (PDOException $e) {
     $pending_research = [];
     $_SESSION['error'] = "Database Error: " . $e->getMessage();
@@ -109,6 +110,7 @@ try {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -118,10 +120,11 @@ try {
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
+
 <body class="bg-gray-100 flex min-h-screen">
-    
+
     <!-- Dynamically include the correct sidebar -->
-    <?php 
+    <?php
     if ($is_admin) {
         include 'admin_sidebar.php';
     } elseif ($is_subadmin) {
@@ -138,32 +141,32 @@ try {
         </header>
 
         <!-- SweetAlert2: Flash messages -->
-        <?php 
+        <?php
         $__flash_success = $_SESSION['success'] ?? null;
         $__flash_error = $_SESSION['error'] ?? null;
         unset($_SESSION['success'], $_SESSION['error']);
         ?>
         <script>
-        (function(){
-          const successMsg = <?php echo json_encode($__flash_success); ?>;
-          const errorMsg = <?php echo json_encode($__flash_error); ?>;
-          if (successMsg) {
-            Swal.fire({
-              icon: 'success',
-              title: 'Success',
-              text: successMsg,
-              timer: 2000,
-              showConfirmButton: false
-            });
-          }
-          if (errorMsg) {
-            Swal.fire({
-              icon: 'error',
-              title: 'Error',
-              text: errorMsg
-            });
-          }
-        })();
+            (function() {
+                const successMsg = <?php echo json_encode($__flash_success); ?>;
+                const errorMsg = <?php echo json_encode($__flash_error); ?>;
+                if (successMsg) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success',
+                        text: successMsg,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+                if (errorMsg) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: errorMsg
+                    });
+                }
+            })();
         </script>
 
         <div class="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -205,8 +208,8 @@ try {
                                             <span class="text-gray-500">No file</span>
                                         <?php endif; ?>
                                     </td>
-                                    
-                                    
+
+
                                     <td class="border border-gray-300 px-4 py-3">
                                         <div class="flex flex-wrap gap-2">
                                             <?php if ($can_approve_research): ?>
@@ -218,7 +221,7 @@ try {
                                                     </button>
                                                 </form>
                                             <?php endif; ?>
-                                            
+
                                             <form method="POST" action="research_approvals.php" class="inline">
                                                 <input type="hidden" name="research_id" value="<?= $research['id']; ?>">
                                                 <input type="hidden" name="archive" value="1">
@@ -263,7 +266,7 @@ try {
                                     <div class="min-w-0">
                                         <h3 class="text-base font-semibold text-gray-900 truncate"><?= htmlspecialchars($research['title']); ?></h3>
                                         <p class="text-xs text-gray-500 mt-0.5">Year: <span class="font-medium text-gray-700"><?= htmlspecialchars($research['year']); ?></span></p>
-                                        
+
                                     </div>
                                     <div class="shrink-0">
                                         <?php if (!empty($research['document'])): ?>
@@ -312,38 +315,39 @@ try {
         </div>
     </main>
     <script>
-    // Delegated handlers for Approve/Archive with SweetAlert2
-    (function(){
-      document.addEventListener('click', function(e){
-        const approveBtn = e.target.closest('.js-approve');
-        const archiveBtn = e.target.closest('.js-archive');
-        if (!approveBtn && !archiveBtn) return;
-        e.preventDefault();
-        const form = (approveBtn || archiveBtn).closest('form');
-        if (!form) return;
-        const isApprove = !!approveBtn;
-        const opts = isApprove ? {
-          title: 'Approve this research?',
-          text: 'This will mark the submission as approved.',
-          confirmButtonText: 'Yes, approve it!'
-        } : {
-          title: 'Archive this research?',
-          text: 'This will move the submission to archive.',
-          confirmButtonText: 'Yes, archive it!'
-        };
-        Swal.fire({
-          title: opts.title,
-          text: opts.text,
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: opts.confirmButtonText,
-          cancelButtonText: 'Cancel',
-          reverseButtons: true
-        }).then((result) => {
-          if (result.isConfirmed) form.submit();
-        });
-      });
-    })();
+        // Delegated handlers for Approve/Archive with SweetAlert2
+        (function() {
+            document.addEventListener('click', function(e) {
+                const approveBtn = e.target.closest('.js-approve');
+                const archiveBtn = e.target.closest('.js-archive');
+                if (!approveBtn && !archiveBtn) return;
+                e.preventDefault();
+                const form = (approveBtn || archiveBtn).closest('form');
+                if (!form) return;
+                const isApprove = !!approveBtn;
+                const opts = isApprove ? {
+                    title: 'Approve this research?',
+                    text: 'This will mark the submission as approved.',
+                    confirmButtonText: 'Yes, approve it!'
+                } : {
+                    title: 'Archive this research?',
+                    text: 'This will move the submission to archive.',
+                    confirmButtonText: 'Yes, archive it!'
+                };
+                Swal.fire({
+                    title: opts.title,
+                    text: opts.text,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: opts.confirmButtonText,
+                    cancelButtonText: 'Cancel',
+                    reverseButtons: true
+                }).then((result) => {
+                    if (result.isConfirmed) form.submit();
+                });
+            });
+        })();
     </script>
 </body>
+
 </html>

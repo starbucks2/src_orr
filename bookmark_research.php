@@ -20,7 +20,7 @@ $book_id = (int)$_POST['research_id'];
 
 try {
     // Check if already bookmarked
-    $stmt = $conn->prepare("SELECT id FROM bookmarks WHERE student_id = ? AND book_id = ?");
+    $stmt = $conn->prepare("SELECT id FROM cap_bookmarks WHERE student_id = ? AND book_id = ?");
     $stmt->execute([$student_id, $book_id]);
     if ($stmt->fetch()) {
         echo json_encode(['success' => false, 'message' => 'Already bookmarked.']);
@@ -28,10 +28,9 @@ try {
     }
 
     // Insert bookmark
-    $stmt = $conn->prepare("INSERT INTO bookmarks (student_id, book_id) VALUES (?, ?)");
+    $stmt = $conn->prepare("INSERT INTO cap_bookmarks (student_id, book_id) VALUES (?, ?)");
     $stmt->execute([$student_id, $book_id]);
     echo json_encode(['success' => true]);
 } catch (PDOException $e) {
     echo json_encode(['success' => false, 'message' => 'Database error.']);
 }
-

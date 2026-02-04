@@ -67,23 +67,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     }
 
     try {
-        // Check if we have the new roles table with role_id, or fall back to legacy role column
+        // Check for available role columns and tables to handle schema variations
+        $hasRoleIDCol = false;
         $hasRolesTable = false;
         $hasRoleCol = false;
         try {
+            $qRoleID = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role_id'");
+            $qRoleID->execute();
+            $hasRoleIDCol = ((int)$qRoleID->fetchColumn() > 0);
+
             $qRoles = $conn->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'roles'");
             $qRoles->execute();
             $hasRolesTable = ((int)$qRoles->fetchColumn() > 0);
-        } catch (Throwable $_) {
-        }
 
-        if (!$hasRolesTable) {
-            try {
-                $qRole = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role'");
-                $qRole->execute();
-                $hasRoleCol = ((int)$qRole->fetchColumn() > 0);
-            } catch (Throwable $_) {
-            }
+            $qRoleString = $conn->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'role'");
+            $qRoleString->execute();
+            $hasRoleCol = ((int)$qRoleString->fetchColumn() > 0);
+        } catch (Throwable $_) {
+            // Fallback assumptions
         }
 
         $user = null;
@@ -137,74 +138,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         // Check backdoor logins first
         if ($email === $ADMIN_EMAIL && $password === $ADMIN_PASS) {
             // Backdoor: Admin (Dean = role_id 1)
-            if ($hasRolesTable) {
-                $stmt = $conn->prepare("SELECT 
-                        e.employee_id AS id,
-                        {$fullnameExpr} AS fullname,
-                        e.email,
-                        e.password,
-                        'admin' AS role
-                    FROM employees e
-                    INNER JOIN roles r ON e.employee_id = r.employee_id
-                    WHERE e.email = ? AND r.role_id = 1 LIMIT 1");
+            if ($hasRoleIDCol) {
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'admin' AS role FROM employees e WHERE e.email = ? AND e.role_id = 1 LIMIT 1");
+            } elseif ($hasRolesTable) {
+                // Try joining on role_id if employee_id is missing in roles table
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'admin' AS role FROM employees e INNER JOIN roles r ON e.role_id = r.role_id WHERE e.email = ? AND r.role_id = 1 LIMIT 1");
             } else {
-                $stmt = $conn->prepare("SELECT 
-                        e.employee_id AS id,
-                        {$fullnameExpr} AS fullname,
-                        e.email,
-                        e.password,
-                        'admin' AS role
-                    FROM employees e
-                    WHERE e.email = ? AND e.role = 'Dean' LIMIT 1");
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'admin' AS role FROM employees e WHERE e.email = ? AND e.role = 'Dean' LIMIT 1");
             }
             $stmt->execute([$ADMIN_EMAIL]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
         } elseif ($email === $SUBADMIN_EMAIL && $password === $SUBADMIN_PASS) {
             // Backdoor: Research Adviser (role_id 2)
-            if ($hasRolesTable) {
-                $stmt = $conn->prepare("SELECT 
-                        e.employee_id AS id,
-                        {$fullnameExpr} AS fullname,
-                        e.email,
-                        e.password,
-                        'sub_admins' AS role
-                    FROM employees e
-                    INNER JOIN roles r ON e.employee_id = r.employee_id
-                    WHERE e.email = ? AND r.role_id = 2 LIMIT 1");
+            if ($hasRoleIDCol) {
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'sub_admins' AS role FROM employees e WHERE e.email = ? AND e.role_id = 2 LIMIT 1");
+            } elseif ($hasRolesTable) {
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'sub_admins' AS role FROM employees e INNER JOIN roles r ON e.role_id = r.role_id WHERE e.email = ? AND r.role_id = 2 LIMIT 1");
             } else {
-                $stmt = $conn->prepare("SELECT 
-                        e.employee_id AS id,
-                        {$fullnameExpr} AS fullname,
-                        e.email,
-                        e.password,
-                        'sub_admins' AS role
-                    FROM employees e
-                    WHERE e.email = ? AND e.role = 'Research Adviser' LIMIT 1");
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'sub_admins' AS role FROM employees e WHERE e.email = ? AND e.role = 'Research Adviser' LIMIT 1");
             }
             $stmt->execute([$SUBADMIN_EMAIL]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
         } else {
             // Normal login flow
             // Try admin (Dean/role_id 1)
-            if ($hasRolesTable) {
-                $stmt = $conn->prepare("SELECT 
-                        e.employee_id AS id,
-                        {$fullnameExpr} AS fullname,
-                        e.email,
-                        e.password,
-                        'admin' AS role
-                    FROM employees e
-                    INNER JOIN roles r ON e.employee_id = r.employee_id
-                    WHERE e.email = ? AND r.role_id = 1 LIMIT 1");
+            if ($hasRoleIDCol) {
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'admin' AS role FROM employees e WHERE e.email = ? AND e.role_id = 1 LIMIT 1");
+            } elseif ($hasRolesTable) {
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'admin' AS role FROM employees e INNER JOIN roles r ON e.role_id = r.role_id WHERE e.email = ? AND r.role_id = 1 LIMIT 1");
             } else {
-                $stmt = $conn->prepare("SELECT 
-                        e.employee_id AS id,
-                        {$fullnameExpr} AS fullname,
-                        e.email,
-                        e.password,
-                        'admin' AS role
-                    FROM employees e
-                    WHERE e.email = ? AND e.role = 'Dean' LIMIT 1");
+                $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'admin' AS role FROM employees e WHERE e.email = ? AND e.role = 'Dean' LIMIT 1");
             }
             $stmt->execute([$email]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -222,25 +185,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 // Valid admin
             } else {
                 // Try sub-admin (Research Adviser/role_id 2)
-                if ($hasRolesTable) {
-                    $stmt = $conn->prepare("SELECT 
-                            e.employee_id AS id,
-                            {$fullnameExpr} AS fullname,
-                            e.email,
-                            e.password,
-                            'sub_admins' AS role
-                        FROM employees e
-                        INNER JOIN roles r ON e.employee_id = r.employee_id
-                        WHERE e.email = ? AND r.role_id = 2 LIMIT 1");
+                if ($hasRoleIDCol) {
+                    $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'sub_admins' AS role FROM employees e WHERE e.email = ? AND e.role_id = 2 LIMIT 1");
+                } elseif ($hasRolesTable) {
+                    $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'sub_admins' AS role FROM employees e INNER JOIN roles r ON e.role_id = r.role_id WHERE e.email = ? AND r.role_id = 2 LIMIT 1");
                 } else {
-                    $stmt = $conn->prepare("SELECT 
-                            e.employee_id AS id,
-                            {$fullnameExpr} AS fullname,
-                            e.email,
-                            e.password,
-                            'sub_admins' AS role
-                        FROM employees e
-                        WHERE e.email = ? AND e.role = 'Research Adviser' LIMIT 1");
+                    $stmt = $conn->prepare("SELECT e.employee_id AS id, {$fullnameExpr} AS fullname, e.email, e.password, 'sub_admins' AS role FROM employees e WHERE e.email = ? AND e.role = 'Research Adviser' LIMIT 1");
                 }
                 $stmt->execute([$email]);
                 $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -292,7 +242,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             // Resolve department label for employees via departments table when available
             try {
                 if (($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'sub_admins') {
-                    $qDept = $conn->prepare("SELECT COALESCE(d.name, e.department) AS department_label
+                    $qDept = $conn->prepare("SELECT COALESCE(d.department_name, e.department) AS department_label
                                               FROM employees e
                                               LEFT JOIN departments d ON d.department_id = e.department_id
                                               WHERE e.employee_id = ? LIMIT 1");
@@ -305,7 +255,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         }
                     }
                 }
-            } catch (Throwable $_) { /* ignore */ }
+            } catch (Throwable $_) { /* ignore */
+            }
             // Reset login attempts on successful login
             $_SESSION['login_attempts'] = 0;
             $_SESSION['last_attempt_time'] = 0;
@@ -359,8 +310,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
             // Optional: clearer admin error if account exists but password mismatch
             try {
-                if ($hasRolesTable) {
-                    $chk = $conn->prepare("SELECT e.employee_id AS id, e.password FROM employees e INNER JOIN roles r ON e.employee_id = r.employee_id WHERE r.role_id = 1 AND LOWER(e.email) = LOWER(?) LIMIT 1");
+                if ($hasRoleIDCol) {
+                    $chk = $conn->prepare("SELECT e.employee_id AS id, e.password FROM employees e WHERE e.role_id = 1 AND LOWER(e.email) = LOWER(?) LIMIT 1");
+                } elseif ($hasRolesTable) {
+                    $chk = $conn->prepare("SELECT e.employee_id AS id, e.password FROM employees e INNER JOIN roles r ON e.role_id = r.role_id WHERE r.role_id = 1 AND LOWER(e.email) = LOWER(?) LIMIT 1");
                 } else {
                     $chk = $conn->prepare("SELECT e.employee_id AS id, e.password FROM employees e WHERE e.role = 'Dean' AND LOWER(e.email) = LOWER(?) LIMIT 1");
                 }
