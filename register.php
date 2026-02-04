@@ -29,6 +29,33 @@ if (!function_exists('get_env_var')) {
 $RECAPTCHA_SITE_KEY = get_env_var('RECAPTCHA_SITE_KEY', '');
 $RECAPTCHA_SECRET_KEY = get_env_var('RECAPTCHA_SECRET_KEY', '');
 
+// --- Server-Side Data Fetching (Mirroring admin_upload_research.php) ---
+$server_departments = [];
+$server_strands = [];
+$server_courses = [];
+
+try {
+    // Departments
+    $stmt = $conn->query("SELECT department_id AS id, department_name AS name, code FROM departments WHERE is_active = 1 ORDER BY department_name");
+    $server_departments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* Ignore */
+}
+
+try {
+    // Strands
+    $stmt = $conn->query("SELECT strand_id AS id, strand FROM strands ORDER BY strand");
+    $server_strands = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* Ignore */
+}
+
+try {
+    // All Courses (for client-side filtering)
+    $stmt = $conn->query("SELECT course_id AS id, course_name AS name, course_code AS code, department_id, strand_id FROM courses WHERE is_active = 1 ORDER BY course_name");
+    $server_courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) { /* Ignore */
+}
+// ---------------------------------------------------------------------
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Match HTML input names: firstname, middlename, lastname
     $firstname = trim($_POST['firstname'] ?? '');
@@ -50,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Removed: grade, role, section, group_number
 
     // Prepare profile picture variables (file or captured image)
-    $profilePic = $_FILES['profile_pic'] ?? null;
+    $profilePic = $_FILES['profile_picture'] ?? null;
     $capturedImage = $_POST['captured_image'] ?? '';
     $profilePicName = '';
     $targetDir = 'images/';
@@ -310,11 +337,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $imageSaved = move_uploaded_file($profilePic['tmp_name'], $filePath);
         }
 
+        // Profile picture is now optional
         if (!$imageSaved) {
-            $_SESSION['error'] = "Please provide a profile picture (upload or capture).";
-            store_old($firstname, $middlename, $lastname, $suffix, $email, $student_id, $department, $course_strand);
-            header("Location: register.php");
-            exit();
+            $profilePicName = 'default.jpg';
         }
 
         // Insert student (pending verification) using student_id
@@ -355,7 +380,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $insertVals[] = $student_id;
         $insertCols[] = 'password';
         $insertVals[] = $hashed_password;
-        $insertCols[] = 'profile_pic';
+        $insertCols[] = in_array('profile_picture', $studentCols, true) ? 'profile_picture' : 'profile_pic';
         $insertVals[] = $profilePicName;
         $insertCols[] = 'is_verified';
         $insertVals[] = 0;
@@ -507,7 +532,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <form action="register.php" method="POST" enctype="multipart/form-data" class="space-y-4 sm:space-y-5">
             <!-- Profile Picture -->
             <div class="mb-2">
-                <label for="profile_pic" class="block text-sm font-semibold text-gray-800">Profile Picture</label>
+                <label for="profile_picture" class="block text-sm font-semibold text-gray-800">Profile Picture</label>
                 <p class="text-xs text-gray-600 mb-3">Choose a clear photo of yourself. Pick a mode below to upload or take a photo.</p>
                 <!-- Mode selector to minimize UI -->
                 <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
@@ -593,9 +618,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!-- Department Selection -->
             <div class="relative">
                 <label for="department" class="block text-sm font-medium text-gray-700 mb-1">Department <span class="text-red-500">*</span></label>
-                <select name="department" id="department" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition" required>
+                <select name="department" id="department" class="mt-1 block w-full px-3 py-2 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition" required>
                     <?php $oldDept = $old['department'] ?? ''; ?>
                     <option value="" <?= empty($oldDept) ? 'selected' : '' ?>>Select Department</option>
+                    <?php foreach ($server_departments as $dept): ?>
+                        <?php
+                        $dName = $dept['name'];
+                        $dId = $dept['id'];
+                        $dCode = $dept['code'] ?? '';
+                        $selected = ($oldDept === $dName) ? 'selected' : '';
+                        ?>
+                        <option value="<?= htmlspecialchars($dName) ?>" data-dept-id="<?= $dId ?>" data-dept-code="<?= htmlspecialchars($dCode) ?>" <?= $selected ?>>
+                            <?= htmlspecialchars($dName) ?>
+                        </option>
+                    <?php endforeach; ?>
                 </select>
             </div>
 
@@ -989,76 +1025,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         })();
 
-        // Dynamic Course/Strand Selection based on Department (DB-backed)
-        (async function setupDynamicSelections() {
+        // Dynamic Course/Strand Selection based on Department (Hybrid: SSR Data + JS)
+        (function setupDynamicSelections() {
             const deptSel = document.getElementById('department');
             const csContainer = document.getElementById('course-strand-container');
             const csSel = document.getElementById('course_strand');
             const csLabel = document.getElementById('course-strand-label');
             const studentIdLabel = document.getElementById('student-id-label');
-            const oldDept = <?php echo json_encode($old['department'] ?? ''); ?>;
+
+            // Server-injected data
+            const serverStrands = <?php echo json_encode($server_strands); ?>;
+            const serverCourses = <?php echo json_encode($server_courses); ?>;
             const oldCS = <?php echo json_encode($old['course_strand'] ?? ''); ?>;
 
-            async function loadDepartments() {
-                try {
-                    const res = await fetch('include/get_departments.php');
-                    const json = await res.json();
-                    if (!json.ok) throw new Error(json.error || 'Failed to load departments');
-                    const keep = deptSel.value;
-                    deptSel.innerHTML = '<option value="">Select Department</option>';
-                    json.data.forEach(d => {
-                        const opt = document.createElement('option');
-                        opt.value = d.name;
-                        opt.textContent = d.name;
-                        opt.dataset.deptId = d.id;
-                        if ((oldDept && d.name === oldDept) || (!oldDept && keep && d.name === keep)) opt.selected = true;
-                        deptSel.appendChild(opt);
-                    });
-                } catch (e) {
-                    console.error(e);
-                }
+            function loadStrands() {
+                csSel.innerHTML = '<option value="">Select Strand</option>';
+                serverStrands.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.strand;
+                    opt.textContent = s.strand;
+                    if (oldCS && s.strand === oldCS) opt.selected = true;
+                    csSel.appendChild(opt);
+                });
             }
 
-            async function loadStrands() {
-                try {
-                    const res = await fetch('include/get_strands.php');
-                    const json = await res.json();
-                    if (!json.ok) throw new Error(json.error || 'Failed to load strands');
-                    csSel.innerHTML = '<option value="">Select Strand</option>';
-                    json.data.forEach(s => {
-                        const opt = document.createElement('option');
-                        opt.value = s.strand;
-                        opt.textContent = s.strand;
-                        if (oldCS && s.strand === oldCS) opt.selected = true;
-                        csSel.appendChild(opt);
-                    });
-                } catch (e) {
-                    console.error(e);
-                }
+            function loadCoursesForDepartmentId(deptId) {
+                csSel.innerHTML = '<option value="">Select Course</option>';
+                // Filter courses by department_id
+                const relevantCourses = serverCourses.filter(c => String(c.department_id) === String(deptId));
+
+                relevantCourses.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.name;
+                    opt.textContent = c.name + (c.code ? ` (${c.code})` : '');
+                    if (oldCS && c.name === oldCS) opt.selected = true;
+                    csSel.appendChild(opt);
+                });
             }
 
-            async function loadCoursesForDepartmentId(deptId) {
-                try {
-                    const res = await fetch('include/get_courses.php?department_id=' + encodeURIComponent(deptId));
-                    const json = await res.json();
-                    if (!json.ok) throw new Error(json.error || 'Failed to load courses');
-                    csSel.innerHTML = '<option value="">Select Course</option>';
-                    json.data.forEach(c => {
-                        const opt = document.createElement('option');
-                        opt.value = c.name;
-                        opt.textContent = c.name + (c.code ? ` (${c.code})` : '');
-                        if (oldCS && c.name === oldCS) opt.selected = true;
-                        csSel.appendChild(opt);
-                    });
-                } catch (e) {
-                    console.error(e);
-                }
+            function loadCoursesForStrand(strandName) {
+                csSel.innerHTML = '<option value="">Select Course</option>';
+                // Find strand ID first
+                const strand = serverStrands.find(s => s.strand === strandName);
+                if (!strand) return;
+
+                const relevantCourses = serverCourses.filter(c => String(c.strand_id) === String(strand.id));
+                relevantCourses.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.name;
+                    opt.textContent = c.name + (c.code ? ` (${c.code})` : '');
+                    if (oldCS && c.name === oldCS) opt.selected = true;
+                    csSel.appendChild(opt);
+                });
             }
 
-            async function onDepartmentChange() {
+            function onDepartmentChange() {
                 const opt = deptSel.options[deptSel.selectedIndex];
                 const deptId = opt ? opt.dataset.deptId : '';
                 const deptName = opt ? opt.value : '';
+                const deptCode = opt ? (opt.dataset.deptCode || '') : '';
+
                 if (!deptId) {
                     csContainer.style.display = 'none';
                     csSel.required = false;
@@ -1066,23 +1092,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (studentIdLabel) studentIdLabel.textContent = 'Student ID';
                     return;
                 }
+
                 csContainer.style.display = '';
                 csSel.required = true;
-                if (deptName.toLowerCase() === 'senior high school') {
+
+                const isSHS = (deptName.toLowerCase().includes('senior high') || deptCode.toLowerCase() === 'shs');
+
+                if (isSHS) {
                     csLabel.textContent = 'Strand';
                     if (studentIdLabel) studentIdLabel.textContent = 'LRN NO.';
-                    await loadStrands();
+                    loadStrands();
+
+                    // If it was supposed to be separated strand vs course, logic might differ, 
+                    // but for register.php simplistic view:
+                    // If user selects specific strand logic is needed, but current register.php just treats it as 'course_strand'
                 } else {
                     csLabel.textContent = 'Course';
                     if (studentIdLabel) studentIdLabel.textContent = 'Student ID';
-                    await loadCoursesForDepartmentId(deptId);
+                    loadCoursesForDepartmentId(deptId);
                 }
-                // Reset oldCS after first render to avoid sticky selection on mode switch
             }
 
-            await loadDepartments();
-            await onDepartmentChange();
             deptSel.addEventListener('change', onDepartmentChange);
+
+            // Initial load
+            if (deptSel.value) {
+                onDepartmentChange();
+            }
         })();
     </script>
 </body>

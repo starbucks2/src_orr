@@ -270,7 +270,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $_SESSION['middlename'] = $user['middle_name'] ?? $user['middlename'] ?? '';
                 $_SESSION['lastname'] = $user['last_name'] ?? $user['lastname'] ?? '';
                 $_SESSION['email'] = $user['email'];
-                $_SESSION['profile_pic'] = $user['profile_pic'] ?? 'default.jpg';
+                $_SESSION['profile_pic'] = $user['profile_picture'] ?? $user['profile_pic'] ?? 'default.jpg';
                 // Department-based
                 $_SESSION['department'] = $user['department'] ?? ($user['course'] ?? ($user['strand'] ?? ''));
                 // Course/Strand

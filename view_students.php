@@ -57,13 +57,19 @@ try {
         $qCols = $conn->prepare("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students'");
         $qCols->execute();
         $cols = $qCols->fetchAll(PDO::FETCH_COLUMN, 0);
-    } catch (Throwable $_) { $cols = []; }
+    } catch (Throwable $_) {
+        $cols = [];
+    }
     $firstCol = in_array('firstname', $cols, true) ? 'firstname' : (in_array('first_name', $cols, true) ? 'first_name' : null);
     $lastCol  = in_array('lastname',  $cols, true) ? 'lastname'  : (in_array('last_name',  $cols, true) ? 'last_name'  : null);
     $orderBy  = 'email';
-    if ($lastCol && $firstCol) { $orderBy = "`$lastCol`, `$firstCol`"; }
-    elseif ($lastCol) { $orderBy = "`$lastCol`"; }
-    elseif ($firstCol) { $orderBy = "`$firstCol`"; }
+    if ($lastCol && $firstCol) {
+        $orderBy = "`$lastCol`, `$firstCol`";
+    } elseif ($lastCol) {
+        $orderBy = "`$lastCol`";
+    } elseif ($firstCol) {
+        $orderBy = "`$firstCol`";
+    }
 
     if ($is_admin) {
         // Admin: view all students
@@ -88,7 +94,6 @@ try {
     $verifiedStudents = $verifiedStmt->fetchAll(PDO::FETCH_ASSOC);
     $pendingCount = count($pendingStudents);
     $verifiedCount = count($verifiedStudents);
-
 } catch (PDOException $e) {
     error_log('DB error in view_students: ' . $e->getMessage());
     $_SESSION['error'] = 'Database error: ' . $e->getMessage();
@@ -100,6 +105,7 @@ try {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -107,10 +113,11 @@ try {
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
+
 <body class="bg-gray-100 flex">
 
     <!-- Sidebar -->
-    <?php 
+    <?php
     if ($user_role === 'admin') {
         include 'admin_sidebar.php';
     } else {
@@ -122,7 +129,7 @@ try {
     <main class="flex-1 p-10">
         <div class="bg-white rounded-lg shadow-md p-8 mb-8">
             <h2 class="text-4xl font-extrabold text-blue-900 mb-6">Students</h2>
-            
+
             <!-- Error/Success Messages -->
             <?php if (isset($_SESSION['error'])): ?>
                 <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4" role="alert">
@@ -130,23 +137,23 @@ try {
                     <?php unset($_SESSION['error']); ?>
                 </div>
             <?php endif; ?>
-            
+
             <?php if (isset($_SESSION['info'])): ?>
                 <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4" role="alert">
                     <p><?php echo $_SESSION['info']; ?></p>
                     <?php unset($_SESSION['info']); ?>
                 </div>
             <?php endif; ?>
-            
+
             <?php if (isset($_SESSION['debug'])): ?>
                 <div class="bg-gray-100 border-l-4 border-gray-500 text-gray-700 p-4 mb-4" role="alert">
                     <p><strong>Debug Info:</strong> <?php echo $_SESSION['debug']; ?></p>
                     <?php unset($_SESSION['debug']); ?>
                 </div>
             <?php endif; ?>
-            
+
             <!-- Database connection status removed from UI; use session messages for errors if needed -->
-            
+
             <!-- (Pending Verification removed; only Verified Students are displayed) -->
 
             <!-- Verified Students -->
@@ -166,13 +173,17 @@ try {
                     </thead>
                     <tbody class="divide-y divide-gray-200">
                         <?php if (empty($verifiedStudents)): ?>
-                            <tr><td colspan="7" class="px-6 py-4 text-center text-gray-600">No verified students.</td></tr>
+                            <tr>
+                                <td colspan="7" class="px-6 py-4 text-center text-gray-600">No verified students.</td>
+                            </tr>
                         <?php else: ?>
                             <?php foreach ($verifiedStudents as $row): ?>
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <?php 
-                                            $pic = !empty($row['profile_pic']) ? 'images/' . htmlspecialchars($row['profile_pic']) : 'images/default.jpg';
+                                        <?php
+                                        // Prefer profile_picture column as shown in Image 2
+                                        $pImg = $row['profile_picture'] ?? $row['profile_pic'] ?? '';
+                                        $pic = !empty($pImg) ? 'images/' . htmlspecialchars($pImg) : 'images/default.jpg';
                                         ?>
                                         <img src="<?= $pic ?>" alt="Profile" class="w-10 h-10 rounded-full object-cover border" />
                                     </td>
@@ -200,21 +211,24 @@ try {
                     </div>
                 <?php else: ?>
                     <?php foreach ($verifiedStudents as $row): ?>
-                        <?php $pic = !empty($row['profile_pic']) ? 'images/' . htmlspecialchars($row['profile_pic']) : 'images/default.jpg'; ?>
+                        <?php
+                        $pImg = $row['profile_picture'] ?? $row['profile_pic'] ?? '';
+                        $pic = !empty($pImg) ? 'images/' . htmlspecialchars($pImg) : 'images/default.jpg';
+                        ?>
                         <div class="bg-white rounded-lg shadow p-4">
                             <div class="flex items-start gap-3">
                                 <img src="<?= $pic ?>" alt="Profile" class="w-12 h-12 rounded-full border-4 border-blue-500 mb-4 object-cover shadow-lg">
                                 <div class="min-w-0">
-                                    <h4 class="text-base font-semibold text-gray-900 truncate"><?= htmlspecialchars(($row['firstname']??'').' '.($row['lastname']??'')) ?></h4>
+                                    <h4 class="text-base font-semibold text-gray-900 truncate"><?= htmlspecialchars(($row['firstname'] ?? '') . ' ' . ($row['lastname'] ?? '')) ?></h4>
                                     <p class="text-xs text-gray-500">Student ID: <span class="font-medium text-gray-700"><?= htmlspecialchars($row['lrn'] ?? '') ?></span></p>
                                     <p class="text-xs text-gray-500">Department: <span class="font-medium text-gray-700"><?= htmlspecialchars($row['department'] ?? '') ?></span></p>
                                     <p class="text-xs text-gray-500"><?= ($row['department'] === 'Senior High School') ? 'Strand:' : 'Course:'; ?> <span class="font-medium text-gray-700"><?= htmlspecialchars($row['course_strand'] ?? 'N/A') ?></span></p>
-                                    <p class="text-xs text-gray-500">Section/Group: <span class="font-medium text-gray-700"><?= htmlspecialchars($row['section'] ?? '-') ?></span> • <span class="font-medium text-gray-700"><?= (!empty($row['group_number']) && (int)$row['group_number']>0) ? ('Group '.(int)$row['group_number']) : '-' ?></span></p>
+                                    <p class="text-xs text-gray-500">Section/Group: <span class="font-medium text-gray-700"><?= htmlspecialchars($row['section'] ?? '-') ?></span> • <span class="font-medium text-gray-700"><?= (!empty($row['group_number']) && (int)$row['group_number'] > 0) ? ('Group ' . (int)$row['group_number']) : '-' ?></span></p>
                                     <p class="text-xs text-gray-500">Email: <span class="font-medium text-gray-700"><?= htmlspecialchars($row['email'] ?? '') ?></span></p>
                                 </div>
                             </div>
                             <div class="mt-3 flex justify-end">
-                                <button type="button" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm" onclick="showProfileModal('<?= htmlspecialchars(addslashes($row['firstname']??'')) ?>','<?= htmlspecialchars(addslashes($row['lastname']??'')) ?>','<?= htmlspecialchars(addslashes($row['email']??'')) ?>','<?= htmlspecialchars(addslashes($row['student_id'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['department']??'')) ?>','<?= htmlspecialchars(addslashes($row['course_strand']??'')) ?>','<?= htmlspecialchars(addslashes($row['profile_pic']??'')) ?>')">
+                                <button type="button" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm" onclick="showProfileModal('<?= htmlspecialchars(addslashes($row['first_name'] ?? $row['firstname'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['last_name'] ?? $row['lastname'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['email'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['student_id'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['department'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['course_strand'] ?? '')) ?>','<?= htmlspecialchars(addslashes($row['profile_picture'] ?? $row['profile_pic'] ?? '')) ?>')">
                                     <i class="fas fa-user mr-1"></i> View
                                 </button>
                             </div>
@@ -252,7 +266,7 @@ try {
                     const label = (department === 'Senior High School') ? 'Strand:' : 'Course:';
                     document.getElementById('modalCourseStrand').textContent = label + ' ' + (courseStrand || 'N/A');
                     document.getElementById('modalProfilePic').src = profilePic ? 'images/' + profilePic : 'images/default.jpg';
-                    
+
                     profileModal.classList.remove('hidden');
                     setTimeout(() => {
                         profileModal.style.opacity = '1';
@@ -275,10 +289,11 @@ try {
                     }
                 });
             </script>
-            
-            
+
+
         </div>
     </main>
-   
+
 </body>
+
 </html>

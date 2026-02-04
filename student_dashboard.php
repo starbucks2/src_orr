@@ -329,7 +329,7 @@ try {
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
                                     <div class="flex items-center space-x-3">
                                         <img src="<?php echo htmlspecialchars($profile_pic); ?>" alt="Current" class="w-12 h-12 rounded-full object-cover">
-                                        <input type="file" name="profile_pic" accept="image/*" class="w-full px-3 py-2 border border-gray-300 rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-primary hover:file:bg-blue-100 transition-all duration-200">
+                                        <input type="file" name="profile_picture" accept="image/*" class="w-full px-3 py-2 border border-gray-300 rounded-lg file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-primary hover:file:bg-blue-100 transition-all duration-200">
                                     </div>
                                 </div>
                                 <div>
@@ -417,8 +417,8 @@ try {
             <!-- Upload Research Section (visible to all students) -->
             <section id="upload-research" class="bg-white p-5 sm:p-6 rounded-xl shadow-lg card-hover transition-all duration-300">
                 <div class="flex items-center mb-5">
-                    <i class="fas fa-cloud-upload-alt text-2xl text-blue-primary mr-3"></i>
-                    <h3 class="text-xl font-bold text-gray-800">Upload Research</h3>
+                    
+                    
                 </div>
 
                 <?php

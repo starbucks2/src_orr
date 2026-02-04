@@ -1,11 +1,18 @@
 <?php
-header('Content-Type: application/json');
+// Prevent any previous output from breaking JSON
+ob_start();
 require_once __DIR__ . '/../db.php';
+// clear buffer
+ob_clean();
+
+header('Content-Type: application/json');
+
 if (!isset($conn) || $conn === null) {
     http_response_code(503);
     echo json_encode(['ok' => false, 'error' => 'Database connection failed']);
     exit;
 }
+
 try {
     try {
         // Try the new column name

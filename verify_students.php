@@ -15,9 +15,9 @@ $strand = isset($_SESSION['department']) ? strtolower($_SESSION['department']) :
 
 if (!$can_verify_students && isset($_SESSION['subadmin_id'])) {
     $permissions = json_decode($_SESSION['permissions'] ?? '[]', true);
-    $can_verify_students = in_array('verify_students', $permissions) || 
-                          in_array('verify_students_' . $strand, $permissions);
-    
+    $can_verify_students = in_array('verify_students', $permissions) ||
+        in_array('verify_students_' . $strand, $permissions);
+
     if (!$can_verify_students) {
         $_SESSION['error'] = "You don't have permission to verify students.";
         header("Location: subadmin_dashboard.php");
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_all']) && $ca
         }
         $affected = $stmtApprove->rowCount();
         $_SESSION['success'] = ($affected > 0)
-            ? ("Approved " . $affected . " student" . ($affected==1?'':'s') . ".")
+            ? ("Approved " . $affected . " student" . ($affected == 1 ? '' : 's') . ".")
             : "No students to approve.";
     } catch (PDOException $e) {
         $_SESSION['error'] = "Bulk approve failed: " . $e->getMessage();
@@ -72,6 +72,7 @@ foreach ($unverified_students as $s) {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -81,9 +82,14 @@ foreach ($unverified_students as $s) {
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
+
 <body class="bg-gray-100 flex min-h-screen">
     <!-- Sidebar -->
-    <?php if (isset($_SESSION['admin_id'])) { include 'admin_sidebar.php'; } else { include 'subadmin_sidebar.php'; } ?>
+    <?php if (isset($_SESSION['admin_id'])) {
+        include 'admin_sidebar.php';
+    } else {
+        include 'subadmin_sidebar.php';
+    } ?>
 
     <!-- Main Content -->
     <main class="flex-1 p-6">
@@ -97,21 +103,21 @@ foreach ($unverified_students as $s) {
                 <input id="vsSearch" type="text" placeholder="Search name, email, Student ID" class="border rounded px-3 py-2 text-sm w-full" />
                 <select id="vsStrand" class="border rounded px-3 py-2 text-sm w-full">
                     <option value="">All Departments</option>
-                    <?php foreach ($strandOptions as $k=>$v): ?>
+                    <?php foreach ($strandOptions as $k => $v): ?>
                         <option value="<?= htmlspecialchars($k) ?>"><?= htmlspecialchars($v) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
         </header>
         <?php if ($can_verify_students): ?>
-        <div class="mb-4 flex justify-end">
-            <form id="approveAllForm" method="POST" action="verify_students.php">
-                <input type="hidden" name="approve_all" value="1">
-                <button type="button" id="approveAllBtn" class="inline-flex items-center bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded font-semibold shadow">
-                    <i class="fas fa-check-double mr-2"></i> Approve All
-                </button>
-            </form>
-        </div>
+            <div class="mb-4 flex justify-end">
+                <form id="approveAllForm" method="POST" action="verify_students.php">
+                    <input type="hidden" name="approve_all" value="1">
+                    <button type="button" id="approveAllBtn" class="inline-flex items-center bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded font-semibold shadow">
+                        <i class="fas fa-check-double mr-2"></i> Approve All
+                    </button>
+                </form>
+            </div>
         <?php endif; ?>
 
         <!-- Info Message for Sub-Admins without Permission -->
@@ -123,32 +129,32 @@ foreach ($unverified_students as $s) {
         <?php endif; ?>
 
         <!-- SweetAlert2: Flash messages -->
-        <?php 
+        <?php
         $__flash_success = $_SESSION['success'] ?? null;
         $__flash_error = $_SESSION['error'] ?? null;
         unset($_SESSION['success'], $_SESSION['error']);
         ?>
         <script>
-        (function(){
-          const successMsg = <?php echo json_encode($__flash_success); ?>;
-          const errorMsg = <?php echo json_encode($__flash_error); ?>;
-          if (successMsg) {
-            Swal.fire({
-              icon: 'success',
-              title: 'Success',
-              text: successMsg,
-              timer: 2000,
-              showConfirmButton: false
-            });
-          }
-          if (errorMsg) {
-            Swal.fire({
-              icon: 'error',
-              title: 'Error',
-              text: errorMsg
-            });
-          }
-        })();
+            (function() {
+                const successMsg = <?php echo json_encode($__flash_success); ?>;
+                const errorMsg = <?php echo json_encode($__flash_error); ?>;
+                if (successMsg) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success',
+                        text: successMsg,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+                if (errorMsg) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: errorMsg
+                    });
+                }
+            })();
         </script>
 
         <div class="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -167,11 +173,11 @@ foreach ($unverified_students as $s) {
                     <tbody class="bg-white divide-y divide-gray-200">
                         <?php if (count($unverified_students) > 0): ?>
                             <?php foreach ($unverified_students as $student): ?>
-                                <?php 
-                                    $sfname = $student['firstname'] ?? $student['first_name'] ?? '';
-                                    $slname = $student['lastname'] ?? $student['last_name'] ?? '';
+                                <?php
+                                $sfname = $student['firstname'] ?? $student['first_name'] ?? '';
+                                $slname = $student['lastname'] ?? $student['last_name'] ?? '';
                                 ?>
-                                <tr class="hover:bg-gray-50 transition duration-150" data-name="<?= htmlspecialchars(strtolower($sfname.' '.$slname)) ?>" data-email="<?= htmlspecialchars(strtolower($student['email'] ?? '')) ?>" data-lrn="<?= htmlspecialchars(strtolower($student['student_id'] ?? '')) ?>" data-strand="<?= htmlspecialchars(strtolower($student['department'] ?? '')) ?>">
+                                <tr class="hover:bg-gray-50 transition duration-150" data-name="<?= htmlspecialchars(strtolower($sfname . ' ' . $slname)) ?>" data-email="<?= htmlspecialchars(strtolower($student['email'] ?? '')) ?>" data-lrn="<?= htmlspecialchars(strtolower($student['student_id'] ?? '')) ?>" data-strand="<?= htmlspecialchars(strtolower($student['department'] ?? '')) ?>">
                                     <td class="border border-gray-300 px-4 py-3">
                                         <div class="font-medium text-gray-900">
                                             <?= htmlspecialchars($sfname . ' ' . $slname); ?>
@@ -191,20 +197,20 @@ foreach ($unverified_students as $s) {
                                     </td>
                                     <td class="border border-gray-300 px-4 py-3">
                                         <div class="flex flex-wrap gap-2">
-                                            <button type="button" onclick="showProfileModal('<?= htmlspecialchars(addslashes($sfname)) ?>','<?= htmlspecialchars(addslashes($slname)) ?>','<?= htmlspecialchars(addslashes($student['email'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['student_id'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['department'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['course_strand'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['profile_pic'] ?? '')) ?>')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded font-semibold shadow transition duration-200">
+                                            <button type="button" onclick="showProfileModal('<?= htmlspecialchars(addslashes($sfname)) ?>','<?= htmlspecialchars(addslashes($slname)) ?>','<?= htmlspecialchars(addslashes($student['email'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['student_id'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['department'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['course_strand'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['profile_picture'] ?? $student['profile_pic'] ?? '')) ?>')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded font-semibold shadow transition duration-200">
                                                 <i class="fas fa-user mr-2"></i> View Profile
                                             </button>
                                             <form action="approve_student.php" method="POST" class="inline">
                                                 <input type="hidden" name="email" value="<?= htmlspecialchars($student['email']); ?>">
                                                 <button type="button"
-                                                        class="js-approve-student inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-semibold shadow transition duration-200">
+                                                    class="js-approve-student inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-semibold shadow transition duration-200">
                                                     <i class="fas fa-check mr-1"></i> Approve
                                                 </button>
                                             </form>
                                             <form action="reject_student.php" method="POST" class="inline">
                                                 <input type="hidden" name="student_id" value="<?= $student['student_id']; ?>">
                                                 <button type="button"
-                                                        class="js-reject-student inline-flex items-center bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded font-semibold shadow transition duration-200">
+                                                    class="js-reject-student inline-flex items-center bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded font-semibold shadow transition duration-200">
                                                     <i class="fas fa-times mr-1"></i> Reject
                                                 </button>
                                             </form>
@@ -229,11 +235,11 @@ foreach ($unverified_students as $s) {
             <div class="xl:hidden grid grid-cols-1 gap-3 p-4">
                 <?php if (count($unverified_students) > 0): ?>
                     <?php foreach ($unverified_students as $student): ?>
-                        <?php 
-                            $sfname = $student['firstname'] ?? $student['first_name'] ?? '';
-                            $slname = $student['lastname'] ?? $student['last_name'] ?? '';
+                        <?php
+                        $sfname = $student['firstname'] ?? $student['first_name'] ?? '';
+                        $slname = $student['lastname'] ?? $student['last_name'] ?? '';
                         ?>
-                        <div class="bg-white rounded-lg shadow p-4" data-name="<?= htmlspecialchars(strtolower($sfname.' '.$slname)) ?>" data-email="<?= htmlspecialchars(strtolower($student['email'] ?? '')) ?>" data-lrn="<?= htmlspecialchars(strtolower($student['student_id'] ?? '')) ?>" data-strand="<?= htmlspecialchars(strtolower($student['department'] ?? '')) ?>">
+                        <div class="bg-white rounded-lg shadow p-4" data-name="<?= htmlspecialchars(strtolower($sfname . ' ' . $slname)) ?>" data-email="<?= htmlspecialchars(strtolower($student['email'] ?? '')) ?>" data-lrn="<?= htmlspecialchars(strtolower($student['student_id'] ?? '')) ?>" data-strand="<?= htmlspecialchars(strtolower($student['department'] ?? '')) ?>">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="min-w-0">
                                     <h3 class="text-base font-semibold text-gray-900">
@@ -245,7 +251,7 @@ foreach ($unverified_students as $s) {
                                     <p class="text-xs text-gray-500"><?= ($student['department'] === 'Senior High School') ? 'Strand:' : 'Course:'; ?> <span class="font-medium text-gray-700"><?= htmlspecialchars($student['course_strand'] ?? 'N/A'); ?></span></p>
                                 </div>
                                 <div class="shrink-0">
-                                    <button type="button" onclick="showProfileModal('<?= htmlspecialchars(addslashes($sfname)) ?>','<?= htmlspecialchars(addslashes($slname)) ?>','<?= htmlspecialchars(addslashes($student['email'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['student_id'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['department'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['course_strand'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['profile_pic'] ?? '')) ?>')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm">
+                                    <button type="button" onclick="showProfileModal('<?= htmlspecialchars(addslashes($sfname)) ?>','<?= htmlspecialchars(addslashes($slname)) ?>','<?= htmlspecialchars(addslashes($student['email'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['student_id'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['department'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['course_strand'] ?? '')) ?>','<?= htmlspecialchars(addslashes($student['profile_picture'] ?? $student['profile_pic'] ?? '')) ?>')" class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm">
                                         <i class="fas fa-user mr-1"></i> View
                                     </button>
                                 </div>
@@ -300,16 +306,18 @@ foreach ($unverified_students as $s) {
             document.getElementById('modalProfilePic').src = profilePic ? 'images/' + profilePic : 'images/default.jpg';
             document.getElementById('profileModal').classList.remove('hidden');
         }
+
         function closeProfileModal() {
             document.getElementById('profileModal').classList.add('hidden');
         }
+
         function backgroundCloseModal(event) {
             if (event.target.id === 'profileModal') {
                 closeProfileModal();
             }
         }
         // Delegated SweetAlert2 confirm for Approve/Reject
-        document.addEventListener('click', function(e){
+        document.addEventListener('click', function(e) {
             const approveBtn = e.target.closest('.js-approve-student');
             const rejectBtn = e.target.closest('.js-reject-student');
             if (!approveBtn && !rejectBtn) return;
@@ -340,11 +348,11 @@ foreach ($unverified_students as $s) {
         });
 
         // Approve All confirmation
-        (function(){
+        (function() {
             const btn = document.getElementById('approveAllBtn');
             const form = document.getElementById('approveAllForm');
             if (!btn || !form) return;
-            btn.addEventListener('click', function(ev){
+            btn.addEventListener('click', function(ev) {
                 ev.preventDefault();
                 Swal.fire({
                     title: 'Approve all students?',
@@ -354,38 +362,44 @@ foreach ($unverified_students as $s) {
                     confirmButtonText: 'Yes, approve all',
                     cancelButtonText: 'Cancel',
                     reverseButtons: true
-                }).then((res)=>{ if (res.isConfirmed) form.submit(); });
+                }).then((res) => {
+                    if (res.isConfirmed) form.submit();
+                });
             });
         })();
         // Client-side filtering for table rows and cards
-        (function(){
+        (function() {
             const q = document.getElementById('vsSearch');
             const fStrand = document.getElementById('vsStrand');
-            
-            function norm(x){ return (x||'').toString().trim().toLowerCase(); }
-            function matches(el){
-                const name = el.getAttribute('data-name')||'';
-                const email = el.getAttribute('data-email')||'';
-                const lrn = el.getAttribute('data-lrn')||'';
-                const strand = el.getAttribute('data-strand')||'';
+
+            function norm(x) {
+                return (x || '').toString().trim().toLowerCase();
+            }
+
+            function matches(el) {
+                const name = el.getAttribute('data-name') || '';
+                const email = el.getAttribute('data-email') || '';
+                const lrn = el.getAttribute('data-lrn') || '';
+                const strand = el.getAttribute('data-strand') || '';
                 const qq = norm(q.value);
                 if (qq && !(name.includes(qq) || email.includes(qq) || lrn.includes(qq))) return false;
                 const fs = norm(fStrand.value);
                 if (fs && strand !== fs) return false;
                 return true;
             }
-            function apply(){
+
+            function apply() {
                 // table rows
-                document.querySelectorAll('tbody tr[data-name]').forEach(tr=>{
+                document.querySelectorAll('tbody tr[data-name]').forEach(tr => {
                     tr.style.display = matches(tr) ? '' : 'none';
                 });
                 // cards
-                document.querySelectorAll('.xl\\:hidden [data-name]').forEach(card=>{
+                document.querySelectorAll('.xl\\:hidden [data-name]').forEach(card => {
                     const show = matches(card);
                     card.style.display = show ? '' : 'none';
                 });
             }
-            ['input','change'].forEach(ev=>{
+            ['input', 'change'].forEach(ev => {
                 q.addEventListener(ev, apply);
                 fStrand.addEventListener(ev, apply);
             });
@@ -393,4 +407,5 @@ foreach ($unverified_students as $s) {
         })();
     </script>
 </body>
+
 </html>

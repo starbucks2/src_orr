@@ -10,157 +10,108 @@ if (!isset($_SESSION['student_id'])) {
 
 $student_id = $_SESSION['student_id'];
 $current = null;
-// Load current student row (used to preserve fields not present in form and to delete old photo)
+// Load current student row using correct column names
 try {
-    $stCur = $conn->prepare("SELECT first_name, middle_name, last_name, email, department, course_strand, profile_pic FROM students WHERE student_id = ?");
+    $stCur = $conn->prepare("SELECT first_name, middle_name, last_name, email, department, course_strand, profile_picture FROM students WHERE student_id = ?");
     $stCur->execute([$student_id]);
     $current = $stCur->fetch(PDO::FETCH_ASSOC) ?: [];
-} catch (Exception $e) { $current = []; }
+} catch (Exception $e) {
+    $current = [];
+}
+
 $firstname = isset($_POST['firstname']) ? trim($_POST['firstname']) : ($current['first_name'] ?? '');
 $middlename = isset($_POST['middlename']) ? trim($_POST['middlename']) : ($current['middle_name'] ?? '');
 $lastname = isset($_POST['lastname']) ? trim($_POST['lastname']) : ($current['last_name'] ?? '');
 $email = isset($_POST['email']) ? trim($_POST['email']) : ($current['email'] ?? '');
 $department = isset($_POST['department']) ? trim($_POST['department']) : ($current['department'] ?? '');
 $course_strand = isset($_POST['course_strand']) ? trim($_POST['course_strand']) : ($current['course_strand'] ?? '');
-$profile_pic_name = $_FILES['profile_pic']['name'] ?? '';
+$profile_pic_name = $_FILES['profile_picture']['name'] ?? '';
 $upload_dir = __DIR__ . '/images/';
-$updated_profile_pic = '';
+$updated_profile_pic = $current['profile_picture'] ?? '';
 
 // Handle profile picture upload if provided
-if (!empty($profile_pic_name) && isset($_FILES['profile_pic']) && is_uploaded_file($_FILES['profile_pic']['tmp_name'])) {
+if (!empty($profile_pic_name) && isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] === UPLOAD_ERR_OK) {
     // Ensure upload dir exists
-    if (!is_dir($upload_dir)) { @mkdir($upload_dir, 0755, true); }
-
-    // Determine MIME type safely (fallbacks)
-    $mime = null;
-    if (function_exists('mime_content_type')) {
-        $mime = @mime_content_type($_FILES['profile_pic']['tmp_name']);
-    }
-    if (!$mime && function_exists('finfo_open')) {
-        $finfo = @finfo_open(FILEINFO_MIME_TYPE);
-        if ($finfo) {
-            $mime = @finfo_file($finfo, $_FILES['profile_pic']['tmp_name']);
-            @finfo_close($finfo);
-        }
-    }
-    if (!$mime) {
-        $extGuess = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
-        $map = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'];
-        $mime = $map[$extGuess] ?? '';
+    if (!is_dir($upload_dir)) {
+        @mkdir($upload_dir, 0755, true);
     }
 
-    $allowed_mime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif', 'image/webp' => 'webp'];
-    if (isset($allowed_mime[$mime])) {
-        $ext = $allowed_mime[$mime];
-        $base = pathinfo($_FILES['profile_pic']['name'], PATHINFO_FILENAME);
-        $safeBase = preg_replace('/[^a-zA-Z0-9_-]/', '_', $base);
-        $genName = 'student_' . $student_id . '_' . time() . '_' . mt_rand(1000,9999) . '_' . $safeBase . '.' . $ext;
+    $ext = strtolower(pathinfo($_FILES['profile_picture']['name'], PATHINFO_EXTENSION));
+    $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+    if (in_array($ext, $allowed_ext)) {
+        $genName = 'student_' . $student_id . '_' . time() . '.' . $ext;
         $dest = $upload_dir . $genName;
-        if (@move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
-            // Remove old profile picture if exists and is different
-            $old = $current['profile_pic'] ?? '';
-            if ($old && is_file($upload_dir . $old)) {
+        if (@move_uploaded_file($_FILES['profile_picture']['tmp_name'], $dest)) {
+            // Remove old profile picture if exists and is different from default
+            $old = $current['profile_picture'] ?? '';
+            if ($old && $old !== 'default.jpg' && is_file($upload_dir . $old)) {
                 @unlink($upload_dir . $old);
             }
-            $updated_profile_pic = $genName; // only filename stored in DB/session
+            $updated_profile_pic = $genName;
         }
     }
 }
 
 try {
-    // Ensure schema has last_password_change column (run outside of transactions to avoid implicit commits)
-    try {
-        $conn->exec("ALTER TABLE students ADD COLUMN last_password_change DATETIME NULL AFTER password");
-    } catch (Exception $e) { /* ignore if exists or not permitted */ }
-
-    // Start transaction for the actual update operations
     $conn->beginTransaction();
+
+    // Detect available columns
+    $cols = [];
+    try {
+        $qCols = $conn->prepare("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'students'");
+        $qCols->execute();
+        $cols = $qCols->fetchAll(PDO::FETCH_COLUMN, 0);
+    } catch (Throwable $_) {
+        $cols = [];
+    }
+
+    $colFirst  = in_array('first_name', $cols, true) ? 'first_name' : (in_array('firstname', $cols, true) ? 'firstname' : 'firstname');
+    $colMiddle = in_array('middle_name', $cols, true) ? 'middle_name' : (in_array('middlename', $cols, true) ? 'middlename' : 'middlename');
+    $colLast   = in_array('last_name', $cols, true) ? 'last_name' : (in_array('lastname', $cols, true) ? 'lastname' : 'lastname');
+    $colPic    = in_array('profile_picture', $cols, true) ? 'profile_picture' : (in_array('profile_pic', $cols, true) ? 'profile_pic' : 'profile_pic');
+
+    // Update main profile info
+    $sql = "UPDATE students SET `$colFirst` = ?, `$colMiddle` = ?, `$colLast` = ?, email = ?, department = ?, course_strand = ?, `$colPic` = ? WHERE student_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute([$firstname, $middlename, $lastname, $email, $department, $course_strand, $updated_profile_pic, $student_id]);
 
     // Handle password change if provided
     if (!empty($_POST['current_password']) && !empty($_POST['new_password']) && !empty($_POST['confirm_password'])) {
-        // Verify current password and get last change time
-        $stmt = $conn->prepare("SELECT password, last_password_change FROM students WHERE student_id = ?");
+        $stmt = $conn->prepare("SELECT password FROM students WHERE student_id = ?");
         $stmt->execute([$student_id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         $current_hash = $row['password'] ?? '';
-        $last_changed = $row['last_password_change'] ?? null;
 
-        if (!password_verify($_POST['current_password'], $current_hash)) {
-            throw new Exception("Current password is incorrect");
-        }
-
-        // Enforce 7-day cooldown (calculate remaining time until last_change + 7 days)
-        if (!empty($last_changed)) {
-            $targetTs = strtotime($last_changed . ' +6 days');
-            if ($targetTs !== false) {
-                $remaining = $targetTs - time();
-                if ($remaining > 0) {
-                    // Show remaining days, ceiling but cap at 7
-                    $daysLeft = (int)ceil($remaining / 86400);
-                    if ($daysLeft < 1) { $daysLeft = 1; }
-                    if ($daysLeft > 7) { $daysLeft = 7; }
-                    throw new Exception("You can change your password again after " . $daysLeft . " day(s).");
-                }
+        if (password_verify($_POST['current_password'], $current_hash)) {
+            if ($_POST['new_password'] === $_POST['confirm_password']) {
+                $new_hash = password_hash($_POST['new_password'], PASSWORD_DEFAULT);
+                $stmt = $conn->prepare("UPDATE students SET password = ?, last_password_change = NOW() WHERE student_id = ?");
+                $stmt->execute([$new_hash, $student_id]);
+            } else {
+                throw new Exception("New passwords do not match.");
             }
+        } else {
+            throw new Exception("Current password is incorrect.");
         }
-
-        // Verify new passwords match
-        if ($_POST['new_password'] !== $_POST['confirm_password']) {
-            throw new Exception("New password and confirm password do not match.");
-        }
-
-        // Validate password strength (min 8 chars, uppercase, lowercase, number, special)
-        $np = $_POST['new_password'];
-        if (strlen($np) < 8
-            || !preg_match('/[A-Z]/', $np)
-            || !preg_match('/[a-z]/', $np)
-            || !preg_match('/\d/', $np)
-            || !preg_match('/[^A-Za-z0-9]/', $np)
-        ) {
-            throw new Exception("Password must be at least 8 characters and include uppercase, lowercase, number, and special character.");
-        }
-
-        // Hash new password
-        $new_password_hash = password_hash($_POST['new_password'], PASSWORD_DEFAULT);
-
-        // Update password and last change timestamp
-        $stmt = $conn->prepare("UPDATE students SET password = ?, last_password_change = NOW() WHERE student_id = ?");
-        $stmt->execute([$new_password_hash, $student_id]);
     }
 
+    $conn->commit();
 
-    // Always update first_name, middle_name, last_name, email, department, course_strand, and optionally profile_pic
-    if ($updated_profile_pic) {
-        $sql = "UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, email = ?, department = ?, course_strand = ?, profile_pic = ? WHERE student_id = ?";
-        $params = [$firstname, $middlename, $lastname, $email, $department, $course_strand, $updated_profile_pic, $student_id];
-        $_SESSION['profile_pic'] = $updated_profile_pic;
-    } else {
-        $sql = "UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, email = ?, department = ?, course_strand = ? WHERE student_id = ?";
-        $params = [$firstname, $middlename, $lastname, $email, $department, $course_strand, $student_id];
-    }
-    $stmt = $conn->prepare($sql);
-    $stmt->execute($params);
-
-    // Update session values
+    // Update session variables
     $_SESSION['firstname'] = $firstname;
     $_SESSION['middlename'] = $middlename;
     $_SESSION['lastname'] = $lastname;
     $_SESSION['email'] = $email;
+    $_SESSION['profile_pic'] = $updated_profile_pic;
     $_SESSION['department'] = $department;
     $_SESSION['course_strand'] = $course_strand;
 
-    // Commit transaction if still active
-    if ($conn->inTransaction()) { $conn->commit(); }
-    
-    $_SESSION['success'] = "Profile updated successfully";
-    header("Location: student_dashboard.php");
-    exit();
-
+    $_SESSION['success'] = "Profile updated successfully!";
 } catch (Exception $e) {
-    // Rollback transaction on error
-    if ($conn->inTransaction()) { $conn->rollBack(); }
+    if ($conn->inTransaction()) $conn->rollBack();
     $_SESSION['error'] = "Error updating profile: " . $e->getMessage();
-    header("Location: student_dashboard.php");
-    exit();
 }
-?>
+
+header("Location: student_dashboard.php");
+exit();
